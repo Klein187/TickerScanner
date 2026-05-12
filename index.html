@@ -3632,7 +3632,13 @@ const HELP_CONTENT = {
       <div class="help-section">
         <div class="help-section-label">When it doesn't</div>
         <div class="help-section-body">
-          Overnight, weekends, and outside the buffer window, auto-scanning stops. The countdown switches to show when the market reopens (e.g. <code>OPENS 14h 23m</code>). You can still tap <strong>SCAN NOW</strong> anytime to manually refresh.
+          Overnight, weekends, and outside the buffer window, auto-scanning stops. You can still tap <strong>SCAN NOW</strong> anytime to manually refresh.
+        </div>
+      </div>
+      <div class="help-section">
+        <div class="help-section-label">Countdown timer</div>
+        <div class="help-section-body">
+          The "OPENS" countdown targets the actual market open at <strong>9:30am ET</strong> — not when the scanner technically resumes (8:30am ET). The displayed local time matches the real opening bell, so you can pre-position trades against it. The scanner is already running quietly an hour earlier so pre-market chatter shows up the moment you open the app at 9:30.
         </div>
       </div>
       <div class="help-section">
@@ -3644,7 +3650,7 @@ const HELP_CONTENT = {
       <div class="help-section">
         <div class="help-section-label">Status indicator</div>
         <div class="help-section-body">
-          When closed, the status pulse goes amber (MANUAL · MARKET CLOSED). Inside the window, it stays green (LIVE). Doesn't track market holidays — those days will show normal countdowns but no special data anyway.
+          When closed, the status pulse goes amber (MANUAL · MARKET CLOSED). Inside the window, it stays green (LIVE). Doesn't track market holidays — those days will show normal countdowns but no fresh data on the day itself.
         </div>
       </div>
     `,
@@ -3907,34 +3913,22 @@ function setStatus(type, text) {
   pulse.className = 'pulse' + (type === 'error' ? ' error' : type === 'scanning' ? ' idle' : '');
   document.getElementById('statusText').textContent = text;
 }
-// Returns the next moment (Date) at which the auto-scan window opens,
-// looking forward from `now`. Returns null if there's no such moment
-// within 7 days (shouldn't happen, but defensive).
-function nextWindowOpen(now = new Date()) {
-  // Search day-by-day for the next weekday whose 8:30am ET we haven't passed yet.
-  // For each candidate day, construct a Date that represents 8:30am ET on that
-  // day, then return the earliest one that's in the future.
+// Returns the next moment (Date) at which the US market actually opens
+// (9:30am ET on weekdays). This is what the countdown targets — distinct
+// from the auto-scan window (which starts 1hr earlier at 8:30am ET).
+// Returns null if no such moment is found within 7 days (defensive).
+function nextMarketOpen(now = new Date()) {
   for (let dayOffset = 0; dayOffset <= 7; dayOffset++) {
-    // We need to construct "8:30am ET on (now + dayOffset days)".
-    // Easiest: take a Date at the same instant + dayOffset days, ask Intl for
-    // its ET weekday/date, and then walk minutes forward from there until we
-    // find the open boundary on that day.
     const candidate = new Date(now.getTime() + dayOffset * 24 * 60 * 60 * 1000);
     const parts = getETParts(candidate);
     if (parts.weekday === 'Sat' || parts.weekday === 'Sun') continue;
 
-    // Compute how many minutes from 'candidate' until 8:30am ET on its own date.
-    // candidate is at some ET time of day; we want to roll it to 8:30am ET.
+    // Roll the candidate to 9:30am ET on its own date
     const candidateMinET = parts.hour * 60 + parts.minute;
-    const openMinET = MARKET_OPEN_HOUR_ET * 60 + MARKET_OPEN_MIN_ET - (BUFFER_HOURS * 60); // 8:30am = 510
+    const openMinET = MARKET_OPEN_HOUR_ET * 60 + MARKET_OPEN_MIN_ET; // 9:30am = 570
     const minutesToOpen = openMinET - candidateMinET;
-    // If this day's open is in the past (candidateMinET > openMinET), and dayOffset
-    // is 0, we need to move on. If it's >= 0, we have a future open today.
     const targetTs = candidate.getTime() + minutesToOpen * 60 * 1000;
     if (targetTs <= now.getTime()) continue;
-    // Also verify the resulting moment is actually inside a valid window
-    // (handles edge cases at the boundary)
-    if (!isAutoScanWindow(new Date(targetTs))) continue;
     return new Date(targetTs);
   }
   return null;
@@ -3966,7 +3960,8 @@ function updateCountdown() {
 
   // Out-of-window: compute fresh from current time each tick.
   // This is self-correcting — doesn't matter if the scheduler timer is stale.
-  const openMoment = nextWindowOpen(new Date(now));
+  // Target is the actual market open (9:30am ET), not when scanning resumes.
+  const openMoment = nextMarketOpen(new Date(now));
   if (!openMoment) {
     el.textContent = 'CLOSED';
     return;
