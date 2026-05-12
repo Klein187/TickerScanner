@@ -3,8 +3,22 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>TICKER//SCAN v3 — Dual-Horizon Reddit Intel</title>
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, user-scalable=no">
+<title>TICKER//SCAN</title>
+
+<!-- PWA / iOS Home Screen App -->
+
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="TickerScan">
+<meta name="theme-color" content="#0a0e0a">
+<meta name="format-detection" content="telephone=no">
+
+<!-- Inline SVG app icon (rendered as data URI to avoid external file dependency) -->
+
+<link rel="apple-touch-icon" href="data:image/svg+xml;utf8,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20viewBox%3D%220%200%20180%20180%22%3E%3Crect%20width%3D%22180%22%20height%3D%22180%22%20fill%3D%22%230a0e0a%22%2F%3E%3Cdefs%3E%3CradialGradient%20id%3D%22g%22%20cx%3D%2250%25%22%20cy%3D%2240%25%22%20r%3D%2270%25%22%3E%3Cstop%20offset%3D%220%25%22%20stop-color%3D%22%234ade80%22%20stop-opacity%3D%220.4%22%2F%3E%3Cstop%20offset%3D%22100%25%22%20stop-color%3D%22%230a0e0a%22%20stop-opacity%3D%220%22%2F%3E%3C%2FradialGradient%3E%3C%2Fdefs%3E%3Crect%20width%3D%22180%22%20height%3D%22180%22%20fill%3D%22url(%23g)%22%2F%3E%3Cg%20stroke%3D%22%231f2a1f%22%20stroke-width%3D%221%22%3E%3Cline%20x1%3D%220%22%20y1%3D%2245%22%20x2%3D%22180%22%20y2%3D%2245%22%2F%3E%3Cline%20x1%3D%220%22%20y1%3D%2290%22%20x2%3D%22180%22%20y2%3D%2290%22%2F%3E%3Cline%20x1%3D%220%22%20y1%3D%22135%22%20x2%3D%22180%22%20y2%3D%22135%22%2F%3E%3Cline%20x1%3D%2245%22%20y1%3D%220%22%20x2%3D%2245%22%20y2%3D%22180%22%2F%3E%3Cline%20x1%3D%2290%22%20y1%3D%220%22%20x2%3D%2290%22%20y2%3D%22180%22%2F%3E%3Cline%20x1%3D%22135%22%20y1%3D%220%22%20x2%3D%22135%22%20y2%3D%22180%22%2F%3E%3C%2Fg%3E%3Cpolyline%20points%3D%2220%2C130%2045%2C115%2070%2C120%2095%2C85%20120%2C95%20145%2C55%20165%2C65%22%20fill%3D%22none%22%20stroke%3D%22%234ade80%22%20stroke-width%3D%223%22%20stroke-linecap%3D%22round%22%20stroke-linejoin%3D%22round%22%2F%3E%3Ccircle%20cx%3D%22145%22%20cy%3D%2255%22%20r%3D%224%22%20fill%3D%22%2386efac%22%2F%3E%3Ctext%20x%3D%2290%22%20y%3D%22168%22%20text-anchor%3D%22middle%22%20fill%3D%22%2386efac%22%20font-family%3D%22monospace%22%20font-size%3D%2218%22%20font-weight%3D%22bold%22%20letter-spacing%3D%222%22%3ESCAN%3C%2Ftext%3E%3C%2Fsvg%3E">
+
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;500;700;800&family=Major+Mono+Display&display=swap" rel="stylesheet">
@@ -942,6 +956,263 @@ right: 14px;
 .mega-tab.active .help-btn {
 right: 36px;
 }
+
+/* ============================================================
+MOBILE RESPONSIVE — phone-optimized layout
+Triggers at 768px and a tighter pass at 480px.
+Priorities: bigger tap targets, single column, condensed
+ticker rows, hide non-essential columns, fullscreen-when-PWA.
+============================================================ */
+@media (max-width: 768px) {
+body {
+background-size: 24px 24px;
+/* Account for iOS notch / home indicator when running as PWA */
+padding-top: env(safe-area-inset-top);
+padding-bottom: env(safe-area-inset-bottom);
+}
+.container {
+padding: 12px 12px 80px;
+}
+
+```
+/* Header: tighter brand, status moves below */
+header {
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 10px;
+  padding-bottom: 12px;
+  margin-bottom: 14px;
+}
+.brand h1 { font-size: 28px; }
+.brand .sub { font-size: 9px; letter-spacing: 0.2em; }
+.status-bar {
+  width: 100%;
+  gap: 12px;
+  font-size: 9px;
+  letter-spacing: 0.1em;
+}
+.countdown { font-size: 9px; }
+
+/* Mega tabs: stack vertically, smaller */
+.mega-tabs {
+  flex-direction: column;
+  gap: 4px;
+  margin-bottom: 16px;
+  border-bottom: none;
+}
+.mega-tab {
+  padding: 12px 14px;
+  border: 1px solid var(--border);
+  font-size: 12px;
+  letter-spacing: 0.2em;
+}
+.mega-tab.active {
+  margin-bottom: 0;
+  border-bottom: 1px solid var(--green);
+}
+.mega-tab .tab-num { font-size: 9px; margin-bottom: 4px; }
+.mega-tab .tab-desc { font-size: 9px; margin-top: 2px; }
+.mega-tab.active::after { right: 12px; font-size: 12px; }
+.mega-tab .help-btn { top: 10px; right: 10px; }
+.mega-tab.active .help-btn { right: 30px; }
+
+/* Controls: stack vertically with full-width groups */
+.controls {
+  flex-direction: column;
+  align-items: stretch;
+  gap: 12px;
+  padding: 12px;
+  margin-bottom: 14px;
+}
+.control-group { width: 100%; }
+
+/* Preset pills: stack as 2x2 grid on phone */
+.preset-pills {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 6px;
+}
+.preset-pill {
+  min-width: 0;
+  padding: 8px 10px;
+}
+.preset-pill .preset-name { font-size: 10px; }
+.preset-pill .preset-desc { font-size: 8px; }
+.preset-pill .preset-icon { font-size: 8px; }
+
+/* Sub pills: wrap nicely, slightly larger tap targets */
+.pill {
+  padding: 8px 12px;
+  font-size: 11px;
+}
+
+/* Action buttons full width on phone */
+.btn { padding: 10px 14px; font-size: 11px; flex: 1; }
+
+/* Stats: compact 3-column grid on phone */
+.stats-row {
+  grid-template-columns: repeat(3, 1fr);
+  gap: 6px;
+  margin-bottom: 14px;
+}
+.stat-card { padding: 8px 10px; }
+.stat-card .label { font-size: 8px; letter-spacing: 0.15em; margin-bottom: 3px; }
+.stat-card .value { font-size: 16px; }
+.stat-card .help-btn { width: 12px; height: 12px; font-size: 7px; }
+
+/* Grid layout: single column */
+.grid-layout {
+  grid-template-columns: 1fr;
+  gap: 14px;
+}
+
+/* Panel headers: tighter */
+.panel-header { padding: 10px 12px; }
+.panel-header h2 { font-size: 10px; letter-spacing: 0.2em; }
+.panel-header .count { font-size: 9px; }
+
+/* SHORT-TERM ticker row: drop sparkline + Z to save space.
+   Visible columns: rank, symbol, price, mentions, sentiment. */
+.ticker-header-short {
+  grid-template-columns: 28px 1fr 70px 50px 50px;
+  padding: 6px 10px;
+  gap: 8px;
+}
+.ticker-header-short > div { font-size: 8px; letter-spacing: 0.15em; }
+.ticker-header-short > div:nth-child(3) { display: none; } /* 60m Trend */
+.ticker-header-short > div:nth-child(5) { display: none; } /* Z-Score */
+/* re-index: only show #, Symbol, Price, Mentions, Sent */
+.ticker-header-short > div:nth-child(4) { /* Price */ }
+.ticker-header-short > div:nth-child(6) { /* Mentions */ }
+.ticker-header-short > div:nth-child(7) { /* Sent */ }
+
+.ticker-row-short {
+  grid-template-columns: 28px 1fr 70px 50px 50px;
+  padding: 10px 10px;
+  gap: 8px;
+}
+.ticker-row-short > div:nth-child(3) { display: none; } /* sparkline */
+.ticker-row-short > div:nth-child(5) { display: none; } /* z-score */
+.ticker-symbol { font-size: 14px; }
+.ticker-meta { font-size: 9px; }
+.price { font-size: 12px; }
+.price-change { font-size: 9px; }
+.mentions-cell { font-size: 14px; }
+.sentiment-score { font-size: 11px; }
+.sentiment-bar-mini { width: 40px; }
+
+/* LONG-TERM ticker row: drop sub count + price, keep tier + quality + persist + sent */
+.ticker-header-long {
+  grid-template-columns: 28px 80px 1fr 60px 50px 50px;
+  padding: 6px 10px;
+  gap: 6px;
+}
+.ticker-header-long > div { font-size: 8px; letter-spacing: 0.15em; }
+.ticker-header-long > div:nth-child(4) { display: none; } /* Price column on long */
+
+.ticker-row-long {
+  grid-template-columns: 28px 80px 1fr 60px 50px 50px;
+  padding: 10px 10px;
+  gap: 6px;
+}
+.ticker-row-long > div:nth-child(4) { display: none; }
+.quality-value, .persistence-days { font-size: 12px; }
+.quality-dot { width: 4px; height: 4px; }
+.tier-badge { font-size: 7px; padding: 1px 4px; }
+
+/* Posts panel: tighter */
+.post-item, .dd-post { padding: 10px 12px; }
+.post-title, .dd-post-title { font-size: 11px; }
+.post-meta, .dd-post-meta { font-size: 9px; }
+.ticker-tag { font-size: 8px; padding: 2px 5px; }
+
+/* Modal: full screen on phone, no padding around */
+.modal-overlay { padding: 0; }
+.modal {
+  max-height: 100vh;
+  max-width: 100vw;
+  width: 100vw;
+  padding: 16px;
+  padding-top: max(16px, env(safe-area-inset-top));
+  padding-bottom: max(16px, env(safe-area-inset-bottom));
+  border-radius: 0;
+  border-left: none;
+  border-right: none;
+}
+.modal-title { font-size: 22px; }
+.modal-stats { grid-template-columns: 1fr 1fr; gap: 6px; }
+.modal-stat { padding: 8px 10px; }
+.modal-stat .label { font-size: 8px; }
+.modal-stat .value { font-size: 13px; }
+.chart-container { padding: 10px; margin: 10px 0; }
+.chart-svg { height: 140px; }
+
+/* Help modal: also fullscreen */
+.help-modal-overlay { padding: 0; }
+.help-modal {
+  max-height: 100vh;
+  max-width: 100vw;
+  width: 100vw;
+  padding: 20px 16px;
+  padding-top: max(20px, env(safe-area-inset-top));
+  padding-bottom: max(20px, env(safe-area-inset-bottom));
+  border-radius: 0;
+  border-left: none;
+  border-right: none;
+}
+.help-modal-title { font-size: 18px; }
+.help-section-body { font-size: 12px; line-height: 1.55; }
+.help-section-body ul { padding-left: 16px; }
+
+/* Help buttons slightly bigger for finger tap on phone */
+.help-btn {
+  width: 20px;
+  height: 20px;
+  font-size: 11px;
+}
+.ticker-header-short .help-btn,
+.ticker-header-long .help-btn,
+.stat-card .help-btn {
+  width: 14px;
+  height: 14px;
+  font-size: 8px;
+}
+
+/* Footer */
+.footer-note { font-size: 9px; padding: 0 8px; }
+```
+
+}
+
+/* Extra-tight pass for very small phones (iPhone SE size) */
+@media (max-width: 380px) {
+.container { padding: 8px 8px 70px; }
+.brand h1 { font-size: 24px; }
+.preset-pills { grid-template-columns: 1fr; }
+.stats-row { grid-template-columns: repeat(2, 1fr); }
+.ticker-header-short, .ticker-row-short {
+grid-template-columns: 24px 1fr 60px 40px 44px;
+gap: 6px;
+}
+.ticker-header-long, .ticker-row-long {
+grid-template-columns: 24px 70px 1fr 50px 44px 44px;
+gap: 5px;
+}
+.ticker-symbol { font-size: 13px; }
+.price { font-size: 11px; }
+}
+
+/* PWA standalone-mode styling (when launched from home screen) */
+@media (display-mode: standalone) {
+body {
+/* Slightly different background to indicate “app mode” */
+background-attachment: fixed;
+}
+.footer-note::before {
+content: ’● APP MODE · ’;
+color: var(–green);
+}
+}
 </style>
 
 </head>
@@ -950,8 +1221,8 @@ right: 36px;
 <div class="container">
   <header>
     <div class="brand">
-      <h1>ticker//scan v3</h1>
-      <div class="sub">Dual-Horizon Intelligence · Short · Long</div>
+      <h1>ticker//scan</h1>
+      <div class="sub">Reddit Sentiment · Short · Long</div>
     </div>
     <div class="status-bar">
       <div class="status-item">
@@ -1141,7 +1412,7 @@ right: 36px;
   </div>
 
   <div class="footer-note">
-    Reddit JSON · Stooq prices · Sub-weighted scoring · Z-score baselines · DD detection · Not financial advice
+    Reddit JSON · Stooq prices · Not financial advice · <span id="installHint">Tap Share → Add to Home Screen to install</span>
   </div>
 </div>
 
@@ -2984,6 +3255,45 @@ STATE.countdownInterval = setInterval(updateCountdown, 1000);
 
 window.showTickerDetail = showTickerDetail;
 window.closeModal = closeModal;
+
+// ============================================================
+// PWA DETECTION & INSTALL HINTS
+// ============================================================
+(function setupInstallHint() {
+  const hint = document.getElementById('installHint');
+  if (!hint) return;
+
+  // Already running standalone (added to home screen)
+  const isStandalone = window.matchMedia('(display-mode: standalone)').matches ||
+                       window.navigator.standalone === true;
+
+  if (isStandalone) {
+    hint.textContent = 'Installed · Home screen mode active';
+    return;
+  }
+
+  // Detect platform for tailored install instructions
+  const ua = navigator.userAgent;
+  const isIOS = /iPad|iPhone|iPod/.test(ua) && !window.MSStream;
+  const isAndroid = /android/i.test(ua);
+  const isMobile = isIOS || isAndroid || window.innerWidth < 768;
+
+  if (isIOS) {
+    hint.textContent = 'Install: tap ⬆ Share → Add to Home Screen';
+  } else if (isAndroid) {
+    hint.textContent = 'Install: tap ⋮ menu → Add to Home Screen';
+  } else if (!isMobile) {
+    hint.textContent = 'Open on your phone, then add to home screen';
+  }
+})();
+
+// Prevent iOS from bouncing the body when scrolling modals on phone
+document.addEventListener('touchmove', function(e) {
+  const modalActive = document.querySelector('.modal-overlay.active, .help-modal-overlay.active');
+  if (!modalActive && document.body.scrollTop === 0) {
+    // Allow normal scroll
+  }
+}, { passive: true });
 </script>
 
 </body>
