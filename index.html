@@ -2466,9 +2466,11 @@ async function fetchPricesBatched(symbols) {
   });
   if (needFetch.length === 0) return;
 
-  // Batch in chunks of 15 (Yahoo accepts more but smaller chunks reduce
-  // the blast radius if any single proxy call fails mid-flight)
-  const BATCH_SIZE = 15;
+  // Batch in chunks of 25. Yahoo handles larger batches fine, and at 100
+  // tickers this gives us 4 parallel requests — fast enough that prices
+  // populate well before the next scan tick. Smaller batches would mean
+  // more roundtrips and more chances for proxy hiccups.
+  const BATCH_SIZE = 25;
   const batches = [];
   for (let i = 0; i < needFetch.length; i += BATCH_SIZE) {
     batches.push(needFetch.slice(i, i + BATCH_SIZE));
@@ -2638,10 +2640,13 @@ async function performScan() {
   STATE.history.push(snapshot);
   saveState();
 
-  // Top tickers for price fetch
+  // Top tickers for price fetch — covers basically every ticker
+  // that'll show in the ticker lists (we render top 30 per view).
+  // Batching keeps this cheap: 100 tickers / 15 per batch = ~7 requests
+  // running in parallel.
   const topTickers = [...tickerMap.values()]
     .sort((a, b) => b.weighted - a.weighted)
-    .slice(0, 20);
+    .slice(0, 100);
 
   render();
   if (isAutoScanWindow()) {
@@ -2652,8 +2657,8 @@ async function performScan() {
   STATE.scanning = false;
   // Note: nextScanAt is set by scheduleNextScan() — don't overwrite here.
 
-  // Batched price fetch — one HTTP request for up to 15 symbols instead of
-  // 15 sequential requests. Yahoo Finance accepts comma-separated symbols.
+  // Batched price fetch — one HTTP request per batch of 15 symbols.
+  // For 100 tickers that's ~7 parallel requests, all hitting Yahoo Finance.
   fetchPricesBatched(topTickers.map(t => t.symbol)).then(() => render());
 }
 
