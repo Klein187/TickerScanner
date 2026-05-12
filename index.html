@@ -2563,9 +2563,30 @@ function renderSparkline(symbol) {
     const y = h - 4 - ((v - min) / range) * (h - 8);
     return `${x},${y}`;
   }).join(' ');
+
+  // Overall trend direction via linear regression slope over all data points.
+  // This is more robust than comparing just the last two scans — a single
+  // dip-then-recovery shouldn't flip the color back to red, and a noisy
+  // flat-ish series shouldn't keep oscillating.
+  // Slope formula: sum((x_i - x_mean)(y_i - y_mean)) / sum((x_i - x_mean)^2)
+  const n = data.length;
+  const xMean = (n - 1) / 2;
+  const yMean = data.reduce((s, v) => s + v, 0) / n;
+  let num = 0, den = 0;
+  for (let i = 0; i < n; i++) {
+    num += (i - xMean) * (data[i] - yMean);
+    den += (i - xMean) ** 2;
+  }
+  const slope = den === 0 ? 0 : num / den;
+  // Threshold: slope must be at least ~0.1 mentions per scan to count as a trend
+  // (avoids classifying tiny float wobble from crosspost multipliers as a trend)
+  const TREND_THRESHOLD = 0.1;
+  let color;
+  if (slope > TREND_THRESHOLD) color = 'var(--green)';
+  else if (slope < -TREND_THRESHOLD) color = 'var(--red)';
+  else color = 'var(--text-dim)';
+
   const last = data[data.length - 1];
-  const prev = data[data.length - 2];
-  const color = last > prev ? 'var(--green)' : last < prev ? 'var(--red)' : 'var(--text-dim)';
   return `<svg class="sparkline" viewBox="0 0 ${w} ${h}" preserveAspectRatio="none">
     <polyline points="${points}" fill="none" stroke="${color}" stroke-width="1.5"/>
     <circle cx="${(data.length - 1) * step}" cy="${h - 4 - ((last - min) / range) * (h - 8)}" r="2" fill="${color}"/>
@@ -2996,11 +3017,11 @@ function showTickerDetail(symbol) {
         </div>
       </div>
       <div class="modal-stat" data-tip="karma">
-        <div class="label">Karma</div>
-        <div class="value">${t.score.toLocaleString()}</div>
+        <div class="label">Karma · Posts</div>
+        <div class="value">${t.score.toLocaleString()} <span style="font-size: 11px; color: var(--text-dim); font-weight: 400;">/ ${t.posts.size}p</span></div>
         <div class="stat-tooltip">
-          <div class="stat-tooltip-title">Total Karma</div>
-          <div class="stat-tooltip-body">Sum of upvotes across all posts mentioning this ticker this scan. High karma + few posts = a viral single thread; high karma + many posts = sustained community attention.</div>
+          <div class="stat-tooltip-title">Total Karma &amp; Post Count</div>
+          <div class="stat-tooltip-body"><strong>Karma</strong>: sum of upvotes across all posts mentioning this ticker. <strong>Posts</strong>: number of distinct Reddit threads (crossposts counted once). <strong>High karma + few posts</strong> = one viral thread; <strong>high karma + many posts</strong> = sustained community attention.</div>
         </div>
       </div>
     </div>
