@@ -326,6 +326,82 @@
   }
   .panel-header .count { font-size: 10px; color: var(--text-dim); letter-spacing: 0.15em; }
 
+  /* Panel with tab strip in header (used for Hot Posts / Influencers switch) */
+  .panel-header-tabs {
+    padding: 0 14px 0 0;
+  }
+  .post-tabs {
+    display: flex;
+    flex: 1;
+    min-width: 0;
+  }
+  .post-tab {
+    flex: 1;
+    background: transparent;
+    border: none;
+    border-right: 1px solid var(--border);
+    color: var(--text-dim);
+    font-family: inherit;
+    font-size: 11px;
+    letter-spacing: 0.2em;
+    text-transform: uppercase;
+    font-weight: 500;
+    padding: 14px 12px;
+    cursor: pointer;
+    transition: all 0.15s ease;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    position: relative;
+  }
+  .post-tab:last-of-type { border-right: 1px solid var(--border); }
+  .post-tab:hover {
+    color: var(--text-bright);
+    background: var(--bg-row);
+  }
+  .post-tab.active {
+    color: var(--green-bright);
+    background: var(--bg-row);
+  }
+  .post-tab.active::after {
+    content: '';
+    position: absolute;
+    bottom: -1px;
+    left: 0;
+    right: 0;
+    height: 2px;
+    background: var(--green);
+  }
+  /* When influencer tab is active, use amber accent to match panel theme */
+  .post-tab.active[data-tab="influencer"] {
+    color: var(--amber);
+  }
+  .post-tab.active[data-tab="influencer"]::after {
+    background: var(--amber);
+  }
+  .post-tab-count {
+    font-size: 9px;
+    padding: 2px 6px;
+    background: var(--bg);
+    color: var(--text-dim);
+    border: 1px solid var(--border);
+    letter-spacing: 0.1em;
+    font-weight: 700;
+  }
+  .post-tab.active .post-tab-count {
+    color: var(--green-bright);
+    border-color: var(--green);
+  }
+  .post-tab.active[data-tab="influencer"] .post-tab-count {
+    color: var(--amber);
+    border-color: var(--amber);
+  }
+
+  /* Tab panels: only the active one displays */
+  .post-tab-panel { display: none; }
+  .post-tab-panel.active { display: block; }
+
   /* SHORT-TERM ticker row */
   .ticker-row-short {
     display: grid;
@@ -1502,22 +1578,24 @@
       </div>
 
       <div class="panel">
-        <div class="panel-header">
-          <h2>► Influencers<button class="help-btn" onclick="showHelp('panel-influencers')">?</button></h2>
-          <div class="count" id="influencerCount">0</div>
+        <div class="panel-header panel-header-tabs">
+          <div class="post-tabs" role="tablist">
+            <button class="post-tab active" data-tab="hot" type="button">
+              ► Hot Posts
+              <span class="post-tab-count" id="postCount">0</span>
+            </button>
+            <button class="post-tab" data-tab="influencer" type="button">
+              ★ Influencers
+              <span class="post-tab-count" id="influencerCount">0</span>
+            </button>
+          </div>
+          <button class="help-btn" onclick="showHelp(STATE.postTab === 'influencer' ? 'panel-influencers' : 'panel-hot-posts')">?</button>
         </div>
-        <div id="influencerList">
-          <div class="empty">// NO INFLUENCER POSTS YET //</div>
-        </div>
-      </div>
-
-      <div class="panel">
-        <div class="panel-header">
-          <h2>► Hot Posts<button class="help-btn" onclick="showHelp('panel-hot-posts')">?</button></h2>
-          <div class="count" id="postCount">0</div>
-        </div>
-        <div id="postList">
+        <div id="postList" class="post-tab-panel active">
           <div class="loading"><span class="scanline">▓▓▓ LOADING ▓▓▓</span></div>
+        </div>
+        <div id="influencerList" class="post-tab-panel">
+          <div class="empty">// NO INFLUENCER POSTS YET //</div>
         </div>
       </div>
     </div>
@@ -1769,6 +1847,7 @@ const STATE = {
   selectedSubs: new Set(SUBREDDITS.filter(s => s.active).map(s => s.id)),
   activePreset: null,
   currentView: 'short',
+  postTab: 'hot', // 'hot' or 'influencer' — which panel is shown in the right-side tabbed panel
   sortShort: 'mentions',
   sortLong: 'quality',
   posts: [],
@@ -4033,6 +4112,23 @@ document.querySelectorAll('.mega-tab').forEach(tab => {
     tab.classList.add('active');
     STATE.currentView = tab.dataset.view;
     document.getElementById('view' + (STATE.currentView === 'short' ? 'Short' : 'Long')).classList.add('active');
+  });
+});
+
+// Hot Posts <-> Influencers tab toggle inside the right-column panel
+document.querySelectorAll('.post-tab').forEach(tab => {
+  tab.addEventListener('click', () => {
+    const which = tab.dataset.tab; // 'hot' or 'influencer'
+    STATE.postTab = which;
+    // Tab button states
+    document.querySelectorAll('.post-tab').forEach(t => {
+      t.classList.toggle('active', t.dataset.tab === which);
+    });
+    // Panel visibility
+    const postList = document.getElementById('postList');
+    const infList = document.getElementById('influencerList');
+    postList.classList.toggle('active', which === 'hot');
+    infList.classList.toggle('active', which === 'influencer');
   });
 });
 
