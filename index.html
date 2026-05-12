@@ -546,6 +546,35 @@
   .price-change.flat { color: var(--text-dim); }
   .price-na { font-size: 10px; color: var(--text-dim); letter-spacing: 0.1em; }
 
+  /* Data source tags next to the price — tells you whether you're seeing
+     near-real-time data, delayed data, or end-of-day stale data */
+  .price-source {
+    display: inline-block;
+    font-size: 7px;
+    padding: 1px 4px;
+    letter-spacing: 0.15em;
+    font-weight: 700;
+    vertical-align: middle;
+    margin-left: 4px;
+    line-height: 1.4;
+    border: 1px solid;
+  }
+  .price-source.live {
+    background: rgba(74, 222, 128, 0.15);
+    color: var(--green);
+    border-color: rgba(74, 222, 128, 0.4);
+  }
+  .price-source.delayed {
+    background: rgba(96, 165, 250, 0.12);
+    color: var(--blue);
+    border-color: rgba(96, 165, 250, 0.3);
+  }
+  .price-source.eod {
+    background: rgba(107, 122, 107, 0.15);
+    color: var(--text-dim);
+    border-color: rgba(107, 122, 107, 0.3);
+  }
+
   .mentions-cell {
     text-align: right;
     font-size: 15px;
@@ -1772,7 +1801,7 @@
   </div>
 
   <div class="footer-note">
-    Reddit JSON · Stooq prices · Not financial advice · <span id="installHint">Tap Share → Add to Home Screen to install</span>
+    Reddit JSON · Yahoo Finance prices · Not financial advice · <span id="installHint">Tap Share → Add to Home Screen to install</span>
   </div>
 </div>
 
@@ -2303,20 +2332,85 @@ function getTier(symbol) {
 }
 
 // ============================================================
-// PRICE (Stooq)
+// PRICE — Yahoo Finance primary (15-min delayed live), Stooq fallback (EOD)
+//
+// Yahoo's /v7/finance/quote returns near-real-time prices for US equities
+// and supports batched symbol lookups (comma-separated). One HTTP request
+// fetches 15-20 tickers, drastically reducing proxy load vs one-per-call.
+//
+// Stooq remains as a fallback because Yahoo occasionally requires a crumb
+// cookie (returns 401) and that's not always practical via CORS proxies.
+//
+// Cache: 60s during market hours (live-ish), 15min outside (data is stale anyway).
 // ============================================================
+
+const YAHOO_PROXIES = [
+  (symList) => `https://corsproxy.io/?url=${encodeURIComponent(`https://query1.finance.yahoo.com/v7/finance/quote?symbols=${symList}`)}`,
+  (symList) => `https://api.allorigins.win/raw?url=${encodeURIComponent(`https://query1.finance.yahoo.com/v7/finance/quote?symbols=${symList}`)}`,
+  (symList) => `https://api.codetabs.com/v1/proxy?quest=${encodeURIComponent(`https://query1.finance.yahoo.com/v7/finance/quote?symbols=${symList}`)}`,
+  // query2 sometimes works when query1 is rate-limited
+  (symList) => `https://corsproxy.io/?url=${encodeURIComponent(`https://query2.finance.yahoo.com/v7/finance/quote?symbols=${symList}`)}`,
+];
+
 const STOOQ_PROXIES = [
   (sym) => `https://corsproxy.io/?url=${encodeURIComponent(`https://stooq.com/q/l/?s=${sym.toLowerCase()}.us&f=sd2t2ohlcv&h&e=csv`)}`,
   (sym) => `https://api.allorigins.win/raw?url=${encodeURIComponent(`https://stooq.com/q/l/?s=${sym.toLowerCase()}.us&f=sd2t2ohlcv&h&e=csv`)}`,
   (sym) => `https://api.codetabs.com/v1/proxy?quest=${encodeURIComponent(`https://stooq.com/q/l/?s=${sym.toLowerCase()}.us&f=sd2t2ohlcv&h&e=csv`)}`,
-  (sym) => `https://corsproxy.io/?${encodeURIComponent(`https://stooq.com/q/l/?s=${sym.toLowerCase()}.us&f=sd2t2ohlcv&h&e=csv`)}`, // old format fallback
   (sym) => `https://stooq.com/q/l/?s=${sym.toLowerCase()}.us&f=sd2t2ohlcv&h&e=csv`,
 ];
 
-async function fetchPrice(symbol) {
-  const cached = STATE.priceCache.get(symbol);
-  if (cached && Date.now() - cached.fetched < PRICE_CACHE_MS) return cached;
+// Cache TTL: shorter during market hours since data is updating
+function getPriceCacheTTL() {
+  return isAutoScanWindow() ? 60 * 1000 : 15 * 60 * 1000;
+}
 
+// Batched Yahoo fetch for many symbols. Returns Map<symbol, priceData>.
+// Marks anything not returned as failed so we don't retry every render.
+async function fetchPricesYahoo(symbols) {
+  const out = new Map();
+  if (symbols.length === 0) return out;
+  const symList = symbols.join(',');
+
+  for (let i = 0; i < YAHOO_PROXIES.length; i++) {
+    try {
+      const res = await fetch(YAHOO_PROXIES[i](symList), { headers: { 'Accept': 'application/json' } });
+      if (!res.ok) continue;
+      const text = await res.text();
+      let data;
+      try { data = JSON.parse(text); } catch (e) { continue; }
+      const results = data?.quoteResponse?.result;
+      if (!Array.isArray(results) || results.length === 0) continue;
+
+      for (const q of results) {
+        const price = q.regularMarketPrice;
+        const change = q.regularMarketChange;
+        const changePct = q.regularMarketChangePercent;
+        if (typeof price !== 'number' || price <= 0) continue;
+        out.set(q.symbol, {
+          price,
+          change: change ?? 0,
+          changePct: changePct ?? 0,
+          // Yahoo's marketState: PRE, REGULAR, POST, CLOSED, PREPRE, POSTPOST
+          marketState: q.marketState || 'UNKNOWN',
+          // Delay in minutes (usually 0 for major exchanges, 15+ for some)
+          delayMinutes: q.exchangeDataDelayedBy ?? 0,
+          source: 'yahoo',
+          fetched: Date.now(),
+        });
+      }
+      // Even if some symbols were missing from the response, we got *something*,
+      // so don't try other proxies
+      return out;
+    } catch (err) {
+      continue;
+    }
+  }
+  // All Yahoo proxies failed; signal failure for the whole batch
+  return out;
+}
+
+// Single-symbol Stooq fallback (kept from earlier — EOD data)
+async function fetchPriceStooq(symbol) {
   for (let i = 0; i < STOOQ_PROXIES.length; i++) {
     try {
       const res = await fetch(STOOQ_PROXIES[i](symbol));
@@ -2330,15 +2424,79 @@ async function fetchPrice(symbol) {
       if (isNaN(close) || isNaN(open) || close === 0) continue;
       const change = close - open;
       const changePct = (change / open) * 100;
-      const result = { price: close, open, change, changePct, fetched: Date.now() };
-      STATE.priceCache.set(symbol, result);
-      return result;
-    } catch (err) {
-      continue;
-    }
+      return {
+        price: close, open, change, changePct,
+        marketState: 'CLOSED',
+        delayMinutes: 0,
+        source: 'stooq-eod',
+        fetched: Date.now(),
+      };
+    } catch (err) { continue; }
+  }
+  return null;
+}
+
+// Single-ticker price fetch (used for legacy callers / individual lookups).
+// Tries Yahoo first as a batch-of-1, falls back to Stooq.
+async function fetchPrice(symbol) {
+  const cached = STATE.priceCache.get(symbol);
+  if (cached && !cached.failed && Date.now() - cached.fetched < getPriceCacheTTL()) return cached;
+
+  const yahooMap = await fetchPricesYahoo([symbol]);
+  let result = yahooMap.get(symbol);
+  if (!result) {
+    result = await fetchPriceStooq(symbol);
+  }
+  if (result) {
+    STATE.priceCache.set(symbol, result);
+    return result;
   }
   STATE.priceCache.set(symbol, { fetched: Date.now(), failed: true });
   return null;
+}
+
+// Batched price fetch — used after every scan for the top N tickers.
+// Yahoo can handle ~15-20 symbols per request. Splits into batches if needed.
+async function fetchPricesBatched(symbols) {
+  if (symbols.length === 0) return;
+  // Filter out cached-fresh symbols to avoid re-fetching
+  const needFetch = symbols.filter(sym => {
+    const c = STATE.priceCache.get(sym);
+    return !c || c.failed || Date.now() - c.fetched >= getPriceCacheTTL();
+  });
+  if (needFetch.length === 0) return;
+
+  // Batch in chunks of 15 (Yahoo accepts more but smaller chunks reduce
+  // the blast radius if any single proxy call fails mid-flight)
+  const BATCH_SIZE = 15;
+  const batches = [];
+  for (let i = 0; i < needFetch.length; i += BATCH_SIZE) {
+    batches.push(needFetch.slice(i, i + BATCH_SIZE));
+  }
+
+  // Fire batches in parallel
+  const allResults = await Promise.all(batches.map(b => fetchPricesYahoo(b)));
+
+  // Merge into cache; track which symbols Yahoo did NOT return
+  const yahooGot = new Set();
+  for (const batchMap of allResults) {
+    for (const [sym, data] of batchMap) {
+      STATE.priceCache.set(sym, data);
+      yahooGot.add(sym);
+    }
+  }
+
+  // For anything Yahoo missed, fall back to Stooq individually (sequential
+  // to be polite to proxies)
+  const stooqFallbacks = needFetch.filter(sym => !yahooGot.has(sym));
+  for (const sym of stooqFallbacks) {
+    const result = await fetchPriceStooq(sym);
+    if (result) {
+      STATE.priceCache.set(sym, result);
+    } else {
+      STATE.priceCache.set(sym, { fetched: Date.now(), failed: true });
+    }
+  }
 }
 
 // ============================================================
@@ -2494,7 +2652,9 @@ async function performScan() {
   STATE.scanning = false;
   // Note: nextScanAt is set by scheduleNextScan() — don't overwrite here.
 
-  Promise.all(topTickers.map(t => fetchPrice(t.symbol))).then(() => render());
+  // Batched price fetch — one HTTP request for up to 15 symbols instead of
+  // 15 sequential requests. Yahoo Finance accepts comma-separated symbols.
+  fetchPricesBatched(topTickers.map(t => t.symbol)).then(() => render());
 }
 
 // ============================================================
@@ -2703,17 +2863,7 @@ function renderTickersShort() {
     }
 
     const price = STATE.priceCache.get(t.symbol);
-    let priceHtml = '<div class="price-na">—</div>';
-    if (price && !price.failed && price.price) {
-      const chClass = price.changePct > 0.05 ? 'up' : price.changePct < -0.05 ? 'down' : 'flat';
-      const arrow = price.changePct > 0 ? '▲' : price.changePct < 0 ? '▼' : '─';
-      priceHtml = `
-        <div class="price">$${price.price.toFixed(2)}</div>
-        <div class="price-change ${chClass}">${arrow} ${price.changePct.toFixed(2)}%</div>
-      `;
-    } else if (price && price.failed) {
-      priceHtml = '<div class="price-na">N/A</div>';
-    }
+    const priceHtml = formatPriceCell(price);
 
     return `
       <div class="ticker-row-short" onclick="showTickerDetail('${t.symbol}')">
@@ -2767,17 +2917,7 @@ function renderTickersLong() {
     const sentBarWidth = Math.min(50, Math.abs(sent) / 2);
 
     const price = STATE.priceCache.get(t.symbol);
-    let priceHtml = '<div class="price-na">—</div>';
-    if (price && !price.failed && price.price) {
-      const chClass = price.changePct > 0.05 ? 'up' : price.changePct < -0.05 ? 'down' : 'flat';
-      const arrow = price.changePct > 0 ? '▲' : price.changePct < 0 ? '▼' : '─';
-      priceHtml = `
-        <div class="price">$${price.price.toFixed(2)}</div>
-        <div class="price-change ${chClass}">${arrow} ${price.changePct.toFixed(2)}%</div>
-      `;
-    } else if (price && price.failed) {
-      priceHtml = '<div class="price-na">N/A</div>';
-    }
+    const priceHtml = formatPriceCell(price);
 
     // Quality dots (out of 5)
     const dotCount = Math.round(quality / 20);
@@ -3044,10 +3184,10 @@ function showTickerDetail(symbol) {
     <div class="modal-stats">
       <div class="modal-stat" data-tip="price">
         <div class="label">Price</div>
-        <div class="value">${price && price.price ? '$' + price.price.toFixed(2) : '—'}</div>
+        <div class="value">${price && price.price ? '$' + price.price.toFixed(2) : '—'}${price && !price.failed && price.source === 'stooq-eod' ? ' <span class="price-source eod" style="margin-left: 4px;">EOD</span>' : (price && !price.failed && price.source === 'yahoo' ? ` <span class="price-source ${(price.delayMinutes || 15) === 0 ? 'live' : 'delayed'}" style="margin-left: 4px;">${(price.delayMinutes || 15) === 0 ? 'LIVE' : (price.delayMinutes || 15) + 'M'}</span>` : '')}</div>
         <div class="stat-tooltip">
           <div class="stat-tooltip-title">Latest Price</div>
-          <div class="stat-tooltip-body">Most recent close from <strong>Stooq</strong>. End-of-day data, not real-time. <code>—</code> means the fetch failed or the ticker isn't in Stooq's US database.</div>
+          <div class="stat-tooltip-body">From <strong>Yahoo Finance</strong> (15-min delayed for most exchanges). Falls back to <strong>Stooq EOD</strong> if Yahoo is unavailable. Tag next to the price shows which source &amp; delay. <strong>LIVE</strong> = near-real-time, <strong>15M</strong> = 15-minute delay, <strong>EOD</strong> = yesterday's close.</div>
         </div>
       </div>
       <div class="modal-stat" data-tip="change">
@@ -3057,7 +3197,7 @@ function showTickerDetail(symbol) {
         </div>
         <div class="stat-tooltip">
           <div class="stat-tooltip-title">Day's % Change</div>
-          <div class="stat-tooltip-body">Open-to-close percentage move for the latest trading session. Pair with <strong>Sentiment</strong> — opposite signs flag possible divergence setups.</div>
+          <div class="stat-tooltip-body">Today's percentage move from previous close. Updates throughout the trading day on each scan (Yahoo) or shows yesterday's close-to-close move (Stooq fallback). Pair with <strong>Sentiment</strong> — opposite signs flag possible divergence setups.</div>
         </div>
       </div>
       <div class="modal-stat" data-tip="zscore">
@@ -3786,12 +3926,28 @@ const HELP_CONTENT = {
   },
   'price': {
     title: 'Price &amp; Day Change',
-    tag: 'Live market data',
+    tag: 'Near-real-time market data',
     body: `
       <div class="help-section">
-        <div class="help-section-label">Data source</div>
+        <div class="help-section-label">Primary source</div>
         <div class="help-section-body">
-          Pulled from <strong>Stooq</strong> (free, no API key, CORS-friendly). Latest close price plus open-to-close % change. Cached for 5 minutes to avoid rate limits.
+          <strong>Yahoo Finance</strong> /v7/finance/quote — updates throughout the trading day on each scan. Most US exchanges are 15-min delayed on the free endpoint; some (NMS/NYSE) report as 0-min delay.
+        </div>
+      </div>
+      <div class="help-section">
+        <div class="help-section-label">Source tags next to price</div>
+        <div class="help-section-body">
+          <ul>
+            <li><span class="price-source live">LIVE</span> Yahoo reports no delay — closest to real-time</li>
+            <li><span class="price-source delayed">15M</span> Yahoo with 15-min delay (typical for free retail data)</li>
+            <li><span class="price-source eod">EOD</span> Stooq fallback — yesterday's close, only when Yahoo unavailable</li>
+          </ul>
+        </div>
+      </div>
+      <div class="help-section">
+        <div class="help-section-label">Refresh rate</div>
+        <div class="help-section-body">
+          Cached <strong>60 seconds during market hours</strong>, <strong>15 minutes after-hours</strong>. Each scan re-fetches prices for the top ~15 tickers in a single batched request to Yahoo, then displays them on the row.
         </div>
       </div>
       <div class="help-section">
@@ -3799,9 +3955,8 @@ const HELP_CONTENT = {
         <div class="help-section-body">
           <ul>
             <li>US tickers only.</li>
-            <li>End-of-day data — not real-time intraday quotes.</li>
-            <li>Some thinly-traded tickers will show <code>N/A</code>.</li>
-            <li>Only the top 20 tickers per scan get a price fetch (to be polite to Stooq).</li>
+            <li>Some tickers (very new IPOs, OTC, foreign) may show <code>N/A</code>.</li>
+            <li>Yahoo's endpoint is unofficial — if it ever breaks, Stooq EOD takes over automatically.</li>
           </ul>
         </div>
       </div>
@@ -4371,6 +4526,34 @@ function escapeHtml(s) {
 function formatTime(d) {
   if (!d) return '—';
   return d.toLocaleTimeString('en-US', { hour12: false });
+}
+
+// Format a price cache entry into HTML for the ticker row.
+// Includes a small data-source tag (LIVE / 15M / EOD) so user always knows
+// whether they're looking at near-real-time or stale data.
+function formatPriceCell(price) {
+  if (!price || price.failed || !price.price) {
+    return '<div class="price-na">—</div>';
+  }
+  const chClass = price.changePct > 0.05 ? 'up' : price.changePct < -0.05 ? 'down' : 'flat';
+  const arrow = price.changePct > 0 ? '▲' : price.changePct < 0 ? '▼' : '─';
+  // Source label:
+  // Yahoo with delayMinutes 0 = LIVE-ish (still technically 15min for most exchanges)
+  // Yahoo with delayMinutes > 0 = explicitly delayed
+  // Stooq = EOD (yesterday's close basically)
+  let sourceTag = '';
+  if (price.source === 'stooq-eod') {
+    sourceTag = '<span class="price-source eod">EOD</span>';
+  } else if (price.source === 'yahoo') {
+    const delay = price.delayMinutes || 15;
+    sourceTag = delay === 0
+      ? '<span class="price-source live">LIVE</span>'
+      : `<span class="price-source delayed">${delay}M</span>`;
+  }
+  return `
+    <div class="price">$${price.price.toFixed(2)}${sourceTag}</div>
+    <div class="price-change ${chClass}">${arrow} ${price.changePct.toFixed(2)}%</div>
+  `;
 }
 function setStatus(type, text) {
   const pulse = document.getElementById('statusPulse');
