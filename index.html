@@ -1996,6 +1996,15 @@ const STATE = {
 };
 
 const SCAN_INTERVAL_MS = 10 * 60 * 1000;
+// ============================================================
+// API CONFIG — Cloudflare Worker URL
+// Replace with your deployed Worker URL after running `wrangler deploy`.
+// Example: 'https://tickerscanner-api.klein187.workers.dev'
+// The Worker runs the scanner on cron every 10 min; this frontend
+// just renders what the Worker has produced.
+// ============================================================
+const WORKER_URL = 'https://tickerscanner-api.klein187.workers.dev';
+
 const HISTORY_KEY = 'tickerscan_history_v3';
 // v4 of baseline key: forced reset because crosspost-deduplicated mention
 // counts (introduced in v16) are on a different scale than the old per-post
@@ -2140,138 +2149,14 @@ function saveState() {
 }
 
 // ============================================================
-// REDDIT FETCH
+// SCANNER LOGIC moved to Cloudflare Worker (worker.js)
+// The browser no longer fetches Reddit or computes baselines —
+// performScan() above just pulls the latest snapshot from the API.
+// Ticker scoring, sentiment, DD detection, baselines, crosspost
+// dedup, and Welford stats all live on the server now.
 // ============================================================
 
-// Try multiple proxies in order. When this is hosted (not file://), browser
-// CORS rules block direct reddit.com requests, so we proxy them.
-const REDDIT_PROXIES = [
-  // Reddit's .json works via these public CORS proxies. corsproxy.io requires ?url= now.
-  (sub) => `https://corsproxy.io/?url=${encodeURIComponent(`https://www.reddit.com/r/${sub}/hot.json?limit=50&raw_json=1`)}`,
-  (sub) => `https://api.allorigins.win/raw?url=${encodeURIComponent(`https://www.reddit.com/r/${sub}/hot.json?limit=50&raw_json=1`)}`,
-  (sub) => `https://api.codetabs.com/v1/proxy?quest=${encodeURIComponent(`https://www.reddit.com/r/${sub}/hot.json?limit=50&raw_json=1`)}`,
-  (sub) => `https://corsproxy.io/?${encodeURIComponent(`https://www.reddit.com/r/${sub}/hot.json?limit=50&raw_json=1`)}`, // old format fallback
-  // Last resort: direct (will only work on localhost/file://)
-  (sub) => `https://www.reddit.com/r/${sub}/hot.json?limit=50&raw_json=1`,
-];
 
-async function fetchSubreddit(sub) {
-  for (let i = 0; i < REDDIT_PROXIES.length; i++) {
-    const url = REDDIT_PROXIES[i](sub);
-    try {
-      const res = await fetch(url, { headers: { 'Accept': 'application/json' } });
-      if (!res.ok) continue;
-      const text = await res.text();
-      let data;
-      try { data = JSON.parse(text); } catch (e) { continue; }
-      if (!data?.data?.children) continue;
-
-      return data.data.children.map(c => ({
-        id: c.data.id,
-        title: c.data.title,
-        selftext: c.data.selftext || '',
-        author: c.data.author || '[deleted]',
-        score: c.data.score,
-        upvote_ratio: c.data.upvote_ratio || 0,
-        num_comments: c.data.num_comments,
-        created: c.data.created_utc,
-        subreddit: c.data.subreddit,
-        link_flair_text: (c.data.link_flair_text || '').toLowerCase(),
-        permalink: `https://reddit.com${c.data.permalink}`,
-      }));
-    } catch (err) {
-      // Try next proxy
-      continue;
-    }
-  }
-  console.error(`All proxies failed for r/${sub}`);
-  return null;
-}
-
-// ============================================================
-// SENTIMENT
-// ============================================================
-function scoreSentiment(text) {
-  const lower = text.toLowerCase();
-  let bull = 0, bear = 0;
-  for (const [word, weight] of Object.entries(BULLISH_WORDS)) {
-    const re = new RegExp(`\\b${word.replace(/[-/\\^$*+?.()|[\]{}]/g, '\\$&')}\\b`, 'g');
-    const matches = lower.match(re);
-    if (matches) bull += matches.length * weight;
-  }
-  for (const [word, weight] of Object.entries(BEARISH_WORDS)) {
-    const re = new RegExp(`\\b${word.replace(/[-/\\^$*+?.()|[\]{}]/g, '\\$&')}\\b`, 'g');
-    const matches = lower.match(re);
-    if (matches) bear += matches.length * weight;
-  }
-  return { bull, bear, net: bull - bear };
-}
-
-function extractTickers(text) {
-  const found = new Map();
-  if (!text) return found;
-  const dollarRegex = /\$([A-Z]{1,5})\b/g;
-  const bareRegex = /\b([A-Z]{2,5})\b/g;
-  let m;
-  while ((m = dollarRegex.exec(text)) !== null) {
-    const sym = m[1];
-    if (!STOPWORDS.has(sym)) found.set(sym, (found.get(sym) || 0) + 2);
-  }
-  while ((m = bareRegex.exec(text)) !== null) {
-    const sym = m[1];
-    if (!STOPWORDS.has(sym) && sym.length >= 2) found.set(sym, (found.get(sym) || 0) + 1);
-  }
-  return found;
-}
-
-// ============================================================
-// DD DETECTION
-// A post is "DD" if it meets several quality signals:
-// - Long body text (>1500 chars = real writing, not a meme)
-// - Tagged as "DD", "Discussion", "Analysis", or "Catalyst"
-// - High upvote ratio (>0.85 = community thinks it's substantive)
-// - Decent score (>50)
-// Returns a 0-100 quality score
-// ============================================================
-function calculateDDScore(post) {
-  let score = 0;
-  const len = post.selftext.length;
-
-  // Length signal: real DD is long
-  if (len > 5000) score += 40;
-  else if (len > 2500) score += 25;
-  else if (len > 1500) score += 15;
-  else if (len > 800) score += 5;
-
-  // Flair signal: explicit DD tagging
-  const flair = post.link_flair_text;
-  if (/\bdd\b|due dilig/.test(flair)) score += 25;
-  else if (/discuss|analysis|catalyst|valuation|thesis/.test(flair)) score += 20;
-  else if (/news|technical/.test(flair)) score += 5;
-
-  // Upvote ratio: community endorsement of quality
-  if (post.upvote_ratio > 0.92) score += 15;
-  else if (post.upvote_ratio > 0.85) score += 10;
-  else if (post.upvote_ratio > 0.75) score += 5;
-
-  // Comment-to-score ratio (discussion vs drive-by upvote)
-  if (post.score > 0 && post.num_comments / post.score > 0.5) score += 10;
-  if (post.num_comments > 100) score += 10;
-  else if (post.num_comments > 30) score += 5;
-
-  // Sub quality bonus
-  const subInfo = SUBREDDITS.find(s => s.id === post.subreddit);
-  if (subInfo) {
-    if (subInfo.tier === 'research') score += 15;
-    else if (subInfo.tier === 'quality') score += 8;
-  }
-
-  return Math.min(100, score);
-}
-
-// ============================================================
-// METRICS
-// ============================================================
 function getSentimentScore(t) {
   const total = t.bull + t.bear;
   if (total === 0) return 0;
@@ -2286,13 +2171,6 @@ function getMentionHistory(symbol, lookback = 6) {
 // Pull a per-scan history series for whatever metric matches the active sort.
 // Returns an array of numbers (one per recent scan). Used by the 60m trend
 // sparkline so the chart actually reflects what's being sorted on.
-//
-// Metric mappings:
-//   mentions  -> mention count per scan
-//   velocity  -> mention count per scan (velocity IS the derivative of this)
-//   zscore    -> mention count per scan (z-score measures deviation from this)
-//   bullish   -> net sentiment (bull - bear) per scan
-//   bearish   -> net sentiment (bull - bear) per scan
 function getMetricHistory(symbol, sortKey, lookback = 6) {
   if (STATE.history.length < 2) return [];
   const recent = STATE.history.slice(-lookback);
@@ -2300,7 +2178,6 @@ function getMetricHistory(symbol, sortKey, lookback = 6) {
   switch (sortKey) {
     case 'bullish':
     case 'bearish':
-      // Net sentiment per scan
       return recent.map(snap => {
         const s = snap.tickers[symbol];
         if (!s) return 0;
@@ -2323,24 +2200,13 @@ function getVelocity(symbol) {
 }
 
 function getZScore(symbol, currentMentions) {
-  // Z-score based on long-running baseline. Updated each scan.
+  // Baselines come from the API (computed server-side via Welford) and are
+  // stored in STATE.tickerBaselines as a Map after each performScan().
+  // Need at least 6 samples to produce a meaningful z-score.
   const baseline = STATE.tickerBaselines.get(symbol);
-  if (!baseline || baseline.samples < 6) return null; // need at least 6 samples to mean anything
+  if (!baseline || baseline.samples < 6) return null;
   const z = (currentMentions - baseline.mean) / (baseline.stddev || 1);
   return z;
-}
-
-function updateBaseline(symbol, currentMentions) {
-  // Running mean/stddev. Welford's online algorithm.
-  let b = STATE.tickerBaselines.get(symbol);
-  if (!b) b = { samples: 0, mean: 0, m2: 0, stddev: 0 };
-  b.samples += 1;
-  const delta = currentMentions - b.mean;
-  b.mean += delta / b.samples;
-  const delta2 = currentMentions - b.mean;
-  b.m2 += delta * delta2;
-  if (b.samples > 1) b.stddev = Math.sqrt(b.m2 / (b.samples - 1));
-  STATE.tickerBaselines.set(symbol, b);
 }
 
 function getPersistence(symbol) {
@@ -2592,153 +2458,78 @@ async function fetchPricesBatched(symbols) {
 // MAIN SCAN
 // ============================================================
 async function performScan() {
+  // In the server-backed architecture, we don't actually scan in the browser
+  // anymore — the Cloudflare Worker does that on cron. This function just
+  // fetches the latest snapshot from the API and hydrates STATE.
   if (STATE.scanning) return;
   STATE.scanning = true;
-  setStatus('scanning', 'SCANNING');
+  setStatus('scanning', 'FETCHING');
 
+  // Track previous ranks for delta arrows on the next render
   STATE.previousRanks.clear();
   const sortedPrev = [...STATE.tickers.entries()].sort((a, b) => b[1].mentions - a[1].mentions);
   sortedPrev.forEach(([sym], idx) => STATE.previousRanks.set(sym, idx));
 
-  const allPosts = [];
-  let anySuccess = false;
-
-  for (const sub of STATE.selectedSubs) {
-    const posts = await fetchSubreddit(sub);
-    if (posts) { allPosts.push(...posts); anySuccess = true; }
-  }
-
-  if (!anySuccess) {
-    setStatus('error', 'FETCH FAILED');
+  let snapshot, history, baselines;
+  try {
+    // Fetch snapshot, history, and baselines in parallel
+    const [snapRes, histRes, baseRes] = await Promise.all([
+      fetch(`${WORKER_URL}/api/snapshot`, { cache: 'no-store' }),
+      fetch(`${WORKER_URL}/api/history`, { cache: 'no-store' }),
+      fetch(`${WORKER_URL}/api/baselines`, { cache: 'no-store' }),
+    ]);
+    if (!snapRes.ok) throw new Error(`Snapshot fetch failed: ${snapRes.status}`);
+    snapshot = await snapRes.json();
+    if (snapshot.error) throw new Error(snapshot.error);
+    history = histRes.ok ? await histRes.json() : [];
+    baselines = baseRes.ok ? await baseRes.json() : {};
+  } catch (err) {
+    setStatus('error', 'API UNREACHABLE');
     document.getElementById('tickerListShort').innerHTML =
-      '<div class="error">// REDDIT FETCH BLOCKED //<br><br>All proxy services are down or rate-limited. The next auto-scan will retry in a few minutes.</div>';
+      `<div class="error">// API UNREACHABLE //<br><br>${escapeHtml(err.message)}<br><br>Check WORKER_URL in index.html or wait for cron to run.</div>`;
     STATE.scanning = false;
     return;
   }
 
+  // Rebuild STATE.tickers from snapshot
   const tickerMap = new Map();
-  const nowTs = Date.now();
-
-  // ============================================================
-  // CROSSPOST DEDUPLICATION
-  // Same (normalized title + author) across multiple subs = same opinion,
-  // not N independent signals. Group them, then process each group as
-  // one logical "post event" with a damped crosspost multiplier:
-  //   1 sub  -> 1.0x (full weight)
-  //   2 subs -> 1.3x (some bonus for spread)
-  //   3 subs -> 1.5x
-  //   4+     -> 1.7x (capped, diminishing returns)
-  // Sentiment, karma, and sub-weighting all use the same dedup'd entries.
-  // For sub-weighting (used in long-term Quality/Weighted sort), we use the
-  // *highest* sub weight across the crossposts — so r/SecurityAnalysis
-  // appearance wins over r/wallstreetbets duplicate of the same post.
-  // ============================================================
-  function normalizeTitle(s) {
-    return (s || '').toLowerCase().replace(/\s+/g, ' ').trim();
+  for (const t of snapshot.tickers || []) {
+    tickerMap.set(t.symbol, {
+      symbol: t.symbol,
+      mentions: t.mentions,
+      weighted: t.weighted,
+      posts: new Set(t.postIds || []),
+      score: t.score,
+      bull: t.bull,
+      bear: t.bear,
+      subs: t.subs || {},
+    });
   }
-  function crosspostMultiplier(n) {
-    if (n <= 1) return 1.0;
-    if (n === 2) return 1.3;
-    if (n === 3) return 1.5;
-    return 1.7;
-  }
-  const postGroups = new Map();
-  const memberLookup = new Map(); // key -> array of member posts, for fast annotation
-  for (const post of allPosts) {
-    const key = `${normalizeTitle(post.title)}__${post.author || ''}`;
-    if (!postGroups.has(key)) {
-      postGroups.set(key, {
-        rep: post,
-        subs: new Set([post.subreddit]),
-        maxScore: post.score,
-        maxComments: post.num_comments,
-        key,
-      });
-      memberLookup.set(key, [post]);
-    } else {
-      const g = postGroups.get(key);
-      g.subs.add(post.subreddit);
-      if (post.score > g.rep.score) g.rep = post;
-      g.maxScore = Math.max(g.maxScore, post.score);
-      g.maxComments = Math.max(g.maxComments, post.num_comments);
-      memberLookup.get(key).push(post);
-    }
-  }
-
-  for (const group of postGroups.values()) {
-    const post = group.rep;
-    const text = post.title + ' ' + post.selftext;
-    const found = extractTickers(text);
-    const postSentiment = scoreSentiment(text);
-    const crossN = group.subs.size;
-    const mult = crosspostMultiplier(crossN);
-    const tickers = [...found.keys()];
-    const ddScore = calculateDDScore(post);
-
-    // Annotate all members of this group (fast lookup, no N×G scan)
-    const members = memberLookup.get(group.key) || [post];
-    for (const member of members) {
-      member.tickers = tickers;
-      member.sentiment = postSentiment;
-      member.ddScore = ddScore;
-      member.crossSubs = crossN;
-      member.crossMultiplier = mult;
-    }
-
-    for (const [sym, weight] of found) {
-      if (!tickerMap.has(sym)) {
-        tickerMap.set(sym, {
-          symbol: sym, mentions: 0, weighted: 0, posts: new Set(),
-          score: 0, bull: 0, bear: 0
-        });
-      }
-      const t = tickerMap.get(sym);
-      t.mentions += 1 * mult;
-      t.weighted += weight * mult;
-      t.posts.add(post.id);
-      t.score += group.maxScore;
-      t.bull += postSentiment.bull * mult;
-      t.bear += postSentiment.bear * mult;
-
-      if (!STATE.tickerFirstSeen.has(sym)) {
-        STATE.tickerFirstSeen.set(sym, { firstTs: nowTs });
-      }
-    }
-  }
-
-  // Mentions can now be fractional (e.g. 1.3, 1.5). Round for display sanity
-  // but keep raw value for math. We'll round at render time only.
-
-  STATE.posts = allPosts.sort((a, b) => b.created - a.created);
   STATE.tickers = tickerMap;
-  STATE.lastScanTime = new Date();
+  STATE.posts = snapshot.posts || [];
+  STATE.ddPosts = snapshot.ddPosts || [];
+  STATE.history = history || [];
+  // Baselines come from the API as a plain object; turn into a Map for the
+  // getZScore lookup pattern that the rendering code expects
+  STATE.tickerBaselines = new Map(Object.entries(baselines || {}));
+  STATE.lastScanTime = new Date(snapshot.ts);
+  STATE.scanMeta = {
+    postCount: snapshot.postCount,
+    uniqueTickers: snapshot.uniqueTickers,
+    scanDurationMs: snapshot.scanDurationMs,
+  };
 
-  // DD posts: filter posts with high DD score, sort by score
-  STATE.ddPosts = allPosts
-    .filter(p => p.ddScore >= 35 && p.tickers && p.tickers.length > 0)
-    .sort((a, b) => b.ddScore - a.ddScore);
-
-  // Update baselines and snapshot
-  const snapshot = { ts: nowTs, tickers: {} };
-  for (const [sym, t] of tickerMap) {
-    snapshot.tickers[sym] = { mentions: t.mentions, bull: t.bull, bear: t.bear };
-    updateBaseline(sym, t.mentions);
-  }
-  STATE.history.push(snapshot);
+  // Local cache for fast renders on next visit
   saveState();
 
-  // Price fetch covers EVERY ticker in this scan, capped at 150 as a safety
-  // valve. Typical scans produce 30-80 unique tickers; the cap only kicks in
-  // during meme-storm scans (100+) to keep CORS proxy load bounded.
-  // At ~120 tickers with batch size 25 = 5 parallel requests per scan.
+  // Price fetch — Yahoo Finance, same as before (still client-side since
+  // there's no benefit to running it on the Worker)
   const ALL_TICKER_PRICE_CAP = 150;
   const topTickers = [...tickerMap.values()]
     .sort((a, b) => b.weighted - a.weighted)
     .slice(0, ALL_TICKER_PRICE_CAP);
 
   render();
-  // Status indicator reflects market state, not scanner state. Scanner runs
-  // 24/7 now, but the user still wants to know if the market itself is open.
   if (isAutoScanWindow()) {
     setStatus('live', 'LIVE · MARKET OPEN');
   } else {
@@ -2746,8 +2537,6 @@ async function performScan() {
   }
   STATE.scanning = false;
 
-  // Batched price fetch — one HTTP request per batch of 25 symbols, fired
-  // in parallel. For a typical 50-ticker scan that's 2 requests.
   fetchPricesBatched(topTickers.map(t => t.symbol)).then(() => render());
 }
 
@@ -4905,8 +4694,12 @@ function scheduleNextScan() {
     STATE.refreshInterval = null;
   }
 
+  // The Worker's cron fires exactly at :00/:10/:20/:30/:40/:50 and takes a few
+  // seconds to fetch + process Reddit. Wait an additional grace period so the
+  // browser fetches AFTER the Worker has written the new snapshot to KV.
+  const GRACE_MS = 30 * 1000;
   const next = nextClockBoundary();
-  STATE.nextScanAt = next.getTime();
+  STATE.nextScanAt = next.getTime() + GRACE_MS;
   const msUntil = STATE.nextScanAt - Date.now();
   STATE.refreshInterval = setTimeout(async () => {
     await performScan();
@@ -4914,20 +4707,15 @@ function scheduleNextScan() {
   }, msUntil);
 }
 
-// On page load: scan immediately IF cache is stale OR the ticker map is empty
-// (which happens on first visit or after CLEAR HIST). Otherwise just render
-// cached state from localStorage and wait for the next scheduled boundary.
+// On page load: always fetch the latest snapshot from the API. The API is
+// the source of truth; localStorage is just a fast-render cache so the UI
+// isn't empty while the fetch is in flight.
 function bootScanner() {
-  const last = STATE.lastScanTime ? STATE.lastScanTime.getTime() : 0;
-  const ageMs = Date.now() - last;
-  const STALE_MS = 10 * 60 * 1000;
-  const tickersEmpty = STATE.tickers.size === 0;
-  if (!last || ageMs >= STALE_MS || tickersEmpty) {
-    performScan().then(() => scheduleNextScan());
-  } else {
-    render();
-    scheduleNextScan();
-  }
+  // Always re-fetch on load (the Worker may have produced a newer scan since
+  // we last loaded), but render any cached state immediately to avoid a blank
+  // screen during the fetch.
+  if (STATE.tickers.size > 0) render();
+  performScan().then(() => scheduleNextScan());
 }
 
 bootScanner();
