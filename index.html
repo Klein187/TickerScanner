@@ -496,7 +496,7 @@
   .tier-quality { background: rgba(96, 165, 250, 0.15); color: var(--blue); border: 1px solid rgba(96, 165, 250, 0.3); }
   .tier-research { background: rgba(167, 139, 250, 0.15); color: var(--purple); border: 1px solid rgba(167, 139, 250, 0.3); }
 
-  .sparkline { width: 100%; height: 32px; }
+  .sparkline { width: 100%; height: 28px; }
 
   .zscore {
     text-align: right;
@@ -999,6 +999,32 @@
     letter-spacing: 0.2em;
     text-transform: uppercase;
     margin-bottom: 12px;
+  }
+  .chart-title-with-legend {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 12px;
+    flex-wrap: wrap;
+  }
+  .chart-legend {
+    display: inline-flex;
+    gap: 10px;
+    font-size: 9px;
+    letter-spacing: 0.15em;
+    text-transform: uppercase;
+    color: var(--text-dim);
+  }
+  .legend-item {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+  }
+  .legend-dot {
+    display: inline-block;
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
   }
   .chart-svg { width: 100%; height: 180px; }
 
@@ -2521,69 +2547,28 @@ function getSortedLong() {
 }
 
 function renderSparkline(symbol) {
-  // Show one dot per scan (last 6 scans = ~60 min). Dot color encodes whether
-  // mentions WENT UP from the prior scan:
-  //   green = increased (new chatter)
-  //   gray  = same or decreased (no new chatter this scan)
-  // First scan dot is always neutral (no prior to compare).
-  // The line connects all dots so the trend is still readable. Current mention
-  // count is displayed inline so "how many" is answerable at a glance.
   const data = getMentionHistory(symbol, 6);
-  const w = 100, h = 28;
-
-  if (data.length < 1) {
-    return `<svg class="sparkline" viewBox="0 0 ${w} ${h}" preserveAspectRatio="none">
+  if (data.length < 2) {
+    return `<svg class="sparkline" viewBox="0 0 100 28" preserveAspectRatio="none">
       <text x="50" y="18" text-anchor="middle" fill="#6b7a6b" font-size="9" font-family="JetBrains Mono">—</text>
     </svg>`;
   }
-
-  // Single data point: just show one dot and the count
-  if (data.length < 2) {
-    const v = data[0];
-    return `<svg class="sparkline" viewBox="0 0 ${w} ${h}" preserveAspectRatio="none">
-      <circle cx="${w / 2}" cy="${h / 2}" r="3" fill="var(--text-dim)"/>
-      <text x="${w / 2 + 8}" y="${h / 2 + 3}" fill="var(--text-bright)" font-size="9" font-family="JetBrains Mono" font-weight="700">${Math.round(v * 10) / 10}</text>
-    </svg>`;
-  }
-
   const max = Math.max(...data, 1);
   const min = Math.min(...data);
   const range = max - min || 1;
-  const padX = 4;
-  const usableW = w - padX * 2 - 18; // leave room for count label on right
-  const step = data.length > 1 ? usableW / (data.length - 1) : 0;
-
-  // Compute dot positions and colors
-  const dots = data.map((v, i) => {
-    const x = padX + i * step;
+  const w = 100, h = 28;
+  const step = w / (data.length - 1);
+  const points = data.map((v, i) => {
+    const x = i * step;
     const y = h - 4 - ((v - min) / range) * (h - 8);
-    let color = 'var(--text-dim)'; // gray default (no change or first dot)
-    if (i > 0) {
-      const prev = data[i - 1];
-      if (v > prev + 0.05) color = 'var(--green)';  // increased (0.05 tolerance for float wobble)
-      else if (v < prev - 0.05) color = 'var(--red)'; // decreased (rare but useful)
-      else color = 'var(--text-dim)'; // same
-    }
-    return { x, y, v, color };
-  });
-
-  // Connecting line (subtle, dim gray so the dots are the focus)
-  const linePoints = dots.map(d => `${d.x},${d.y}`).join(' ');
-
-  // Render dots as filled circles
-  const dotSvg = dots.map(d =>
-    `<circle cx="${d.x}" cy="${d.y}" r="2.5" fill="${d.color}"/>`
-  ).join('');
-
-  // Inline count label (current mention count)
-  const current = data[data.length - 1];
-  const currentLabel = Math.round(current * 10) / 10;
-  const labelX = padX + (data.length - 1) * step + 6;
-
+    return `${x},${y}`;
+  }).join(' ');
+  const last = data[data.length - 1];
+  const prev = data[data.length - 2];
+  const color = last > prev ? 'var(--green)' : last < prev ? 'var(--red)' : 'var(--text-dim)';
   return `<svg class="sparkline" viewBox="0 0 ${w} ${h}" preserveAspectRatio="none">
-    <polyline points="${linePoints}" fill="none" stroke="var(--border)" stroke-width="1"/>
-    ${dotSvg}
-    <text x="${labelX}" y="${h / 2 + 3}" fill="var(--text-bright)" font-size="9" font-family="JetBrains Mono" font-weight="700">${currentLabel}</text>
+    <polyline points="${points}" fill="none" stroke="${color}" stroke-width="1.5"/>
+    <circle cx="${(data.length - 1) * step}" cy="${h - 4 - ((last - min) / range) * (h - 8)}" r="2" fill="${color}"/>
   </svg>`;
 }
 
@@ -3021,7 +3006,14 @@ function showTickerDetail(symbol) {
     </div>
 
     <div class="chart-container">
-      <div class="chart-title">► Mention Velocity (last ${history.length} scans · ~${history.length * 10}min)</div>
+      <div class="chart-title chart-title-with-legend">
+        <span>► Mention Velocity (last ${history.length} scans · ~${history.length * 10}min)</span>
+        <span class="chart-legend">
+          <span class="legend-item"><span class="legend-dot" style="background: var(--green);"></span>NEW</span>
+          <span class="legend-item"><span class="legend-dot" style="background: var(--text-dim);"></span>SAME</span>
+          <span class="legend-item"><span class="legend-dot" style="background: var(--red);"></span>FEWER</span>
+        </span>
+      </div>
       ${renderBigChart(mentionData, 'var(--green)')}
     </div>
 
@@ -3300,55 +3292,35 @@ function renderBigChart(data, color) {
   const step = (w - pad * 2) / (data.length - 1);
   const yScale = (h - pad * 2) / max;
 
-  // Compute dot colors using same green/gray-red rule as the sparkline:
-  // each dot indicates whether this scan ADDED new mentions vs the previous.
-  // Subtle bonus: a value label hovers above each dot so the actual count
-  // is readable on the chart.
+  // Compute dot color per scan: green if mentions increased vs prior scan,
+  // red if decreased, gray if same. First scan has no prior so it's gray.
+  // Only LABEL a dot when its value differs from the previous one — so a
+  // flat run of 1s shows just one "1" label on the first dot, then nothing
+  // until the value changes again.
+  const TOLERANCE = 0.05; // floating-point wobble allowance
   const dots = data.map((v, i) => {
     const x = pad + i * step;
     const y = h - pad - v * yScale;
     let dotColor = 'var(--text-dim)';
-    if (i > 0) {
+    let changed = false; // did value change from the previous scan?
+    if (i === 0) {
+      changed = v > 0; // first scan: label it if there's any mention
+    } else {
       const prev = data[i - 1];
-      if (v > prev + 0.05) dotColor = 'var(--green)';
-      else if (v < prev - 0.05) dotColor = 'var(--red)';
+      if (v > prev + TOLERANCE) { dotColor = 'var(--green)'; changed = true; }
+      else if (v < prev - TOLERANCE) { dotColor = 'var(--red)'; changed = true; }
     }
-    return { x, y, v, color: dotColor };
+    return { x, y, v, color: dotColor, changed };
   });
   const linePoints = dots.map(d => `${d.x},${d.y}`).join(' ');
   const area = `${pad},${h - pad} ${linePoints} ${pad + (data.length - 1) * step},${h - pad}`;
 
-  // Decide which dots to label (avoid crowding when there are lots of scans):
-  // label first, last, max, and any local peaks
-  const labelIndices = new Set([0, data.length - 1]);
-  for (let i = 0; i < data.length; i++) {
-    if (data[i] === max) labelIndices.add(i);
-  }
-  // Show every dot's label if there are <= 8 scans, otherwise pick spaced ones
-  if (data.length <= 8) {
-    for (let i = 0; i < data.length; i++) labelIndices.add(i);
-  } else {
-    const stride = Math.ceil(data.length / 8);
-    for (let i = 0; i < data.length; i += stride) labelIndices.add(i);
-  }
-
-  const dotSvg = dots.map((d, i) => {
-    const label = labelIndices.has(i) && d.v > 0
+  const dotSvg = dots.map((d) => {
+    const label = d.changed
       ? `<text x="${d.x}" y="${d.y - 8}" text-anchor="middle" fill="var(--text-bright)" font-size="10" font-family="JetBrains Mono" font-weight="700">${Math.round(d.v * 10) / 10}</text>`
       : '';
     return `<circle cx="${d.x}" cy="${d.y}" r="3.5" fill="${d.color}"/>${label}`;
   }).join('');
-
-  // Legend in the corner explaining what dot colors mean
-  const legend = `
-    <g transform="translate(${w - pad - 180}, ${pad + 4})">
-      <circle cx="6" cy="6" r="3" fill="var(--green)"/>
-      <text x="14" y="9" fill="var(--text-dim)" font-size="9" font-family="JetBrains Mono">NEW</text>
-      <circle cx="56" cy="6" r="3" fill="var(--text-dim)"/>
-      <text x="64" y="9" fill="var(--text-dim)" font-size="9" font-family="JetBrains Mono">SAME</text>
-      <circle cx="110" cy="6" r="3" fill="var(--red)"/>
-      <text x="118" y="9" fill="var(--text-dim)" font-size="9" font-family="JetBrains Mono">FEWER</text>
-    </g>`;
 
   return `
     <svg class="chart-svg" viewBox="0 0 ${w} ${h}" preserveAspectRatio="none">
@@ -3364,7 +3336,6 @@ function renderBigChart(data, color) {
       <polyline points="${linePoints}" fill="none" stroke="var(--border)" stroke-width="1.5"/>
       ${dotSvg}
       <text x="${pad}" y="${pad - 8}" fill="var(--text-dim)" font-size="9" font-family="JetBrains Mono">MAX: ${Math.round(max * 10) / 10}</text>
-      ${legend}
     </svg>
   `;
 }
@@ -3563,34 +3534,24 @@ const HELP_CONTENT = {
   },
   'trend': {
     title: '60-Minute Trend',
-    tag: 'Per-scan mention dots',
+    tag: 'Mention sparkline',
     body: `
       <div class="help-section">
-        <div class="help-section-label">What you see</div>
+        <div class="help-section-label">What it shows</div>
         <div class="help-section-body">
-          One dot per scan (up to 6 scans = ~60 min). The number on the right is the <strong>current mention count</strong>. Connecting line shows the trend shape.
+          Mini chart of the last 6 scans (~60 min) of mention counts for this ticker. <strong>Green line</strong> = trending up at the moment, <strong>red</strong> = trending down, gray = flat.
         </div>
       </div>
       <div class="help-section">
-        <div class="help-section-label">Dot colors</div>
+        <div class="help-section-label">Reading the shape</div>
         <div class="help-section-body">
-          <ul>
-            <li><span style="color: var(--green); font-weight: 700;">●</span> <strong>Green</strong> — this scan added new mentions vs the previous scan</li>
-            <li><span style="color: var(--text-dim); font-weight: 700;">●</span> <strong>Gray</strong> — same as previous (no fresh chatter this scan)</li>
-            <li><span style="color: var(--red); font-weight: 700;">●</span> <strong>Red</strong> — fewer mentions than previous (Reddit's hot feed dropped some)</li>
-          </ul>
+          Stair-stepping up = sustained momentum building. Single spike = one-off post. V-shaped = bounce. Flat = ticker discussed but conversation not growing.
         </div>
       </div>
       <div class="help-section">
-        <div class="help-section-label">How to read it</div>
+        <div class="help-section-label">More detail</div>
         <div class="help-section-body">
-          A run of <strong>consecutive green dots</strong> = chatter building scan-by-scan, often the strongest pre-momentum signal. All gray = ticker is being discussed but the discussion isn't growing — already priced in or fading. Mixed pattern (green-gray-green) = sporadic interest, less actionable.
-        </div>
-      </div>
-      <div class="help-section">
-        <div class="help-section-label">Why fractional counts?</div>
-        <div class="help-section-body">
-          Mentions can show as <code>1.3</code> or <code>1.5</code> when a single post is crossposted to multiple subs — see the <strong>Z-Score</strong> help for the crosspost-handling rule.
+          Click any ticker row to open the detail modal, which shows a larger Mention Velocity chart with per-scan dots (green/gray/red) and value labels marking each change in mention count.
         </div>
       </div>
     `,
