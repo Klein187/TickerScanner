@@ -728,39 +728,56 @@
   }
   .modal-stat .value { font-size: 16px; color: var(--text-bright); font-weight: 500; }
 
-  /* ============ Stat tooltips (hover/tap to reveal explanation) ============ */
-  .stat-tooltip {
-    position: absolute;
-    bottom: calc(100% + 6px);
-    left: 50%;
-    transform: translateX(-50%);
-    width: 220px;
-    max-width: 90vw;
+  /* ============ Stat tooltips (hover or tap to reveal) ============
+     Strategy: a single floating tooltip element appended to body, with
+     position: fixed (escapes any clipping by modal/overflow ancestors).
+     JS measures the trigger element and positions the tooltip in the best
+     available spot — above the trigger normally, below if no room above,
+     clamped horizontally to stay on screen. Works on desktop hover and
+     mobile tap with identical UI.
+  ============================================================ */
+  #floatingTooltip {
+    position: fixed;
+    width: 240px;
+    max-width: calc(100vw - 24px);
     background: var(--bg-panel);
     border: 1px solid var(--green);
-    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.6), 0 0 0 1px var(--green-glow);
+    box-shadow: 0 4px 24px rgba(0, 0, 0, 0.7), 0 0 0 1px var(--green-glow);
     padding: 10px 12px;
     font-size: 11px;
     line-height: 1.45;
     color: var(--text);
     letter-spacing: 0.02em;
-    text-transform: none;
-    z-index: 110;
+    z-index: 1000;
     opacity: 0;
     pointer-events: none;
-    transition: opacity 0.15s ease, transform 0.15s ease;
-    transform: translateX(-50%) translateY(4px);
+    transition: opacity 0.12s ease;
     text-align: left;
     font-weight: 400;
+    text-transform: none;
+    /* hidden by default until JS positions it */
+    top: -9999px;
+    left: -9999px;
   }
-  .stat-tooltip::after {
+  #floatingTooltip.visible {
+    opacity: 1;
+  }
+  #floatingTooltip::after {
     content: '';
     position: absolute;
-    top: 100%;
-    left: 50%;
+    left: var(--arrow-x, 50%);
     transform: translateX(-50%);
-    border: 5px solid transparent;
+    border: 6px solid transparent;
+  }
+  /* Arrow points down when tooltip is above trigger */
+  #floatingTooltip.above::after {
+    top: 100%;
     border-top-color: var(--green);
+  }
+  /* Arrow points up when tooltip is below trigger */
+  #floatingTooltip.below::after {
+    bottom: 100%;
+    border-bottom-color: var(--green);
   }
   .stat-tooltip-title {
     font-size: 10px;
@@ -778,47 +795,10 @@
     font-size: 10px;
     border: 1px solid var(--border);
   }
-  .modal-stat:hover .stat-tooltip,
-  .modal-stat.tip-open .stat-tooltip {
-    opacity: 1;
-    pointer-events: auto;
-    transform: translateX(-50%) translateY(0);
-  }
-  /* Edge handling: first column tooltips align left, last column align right */
-  .modal-stat:first-child .stat-tooltip,
-  .modal-stat:nth-child(3n+1) .stat-tooltip {
-    left: 0;
-    transform: translateX(0) translateY(4px);
-  }
-  .modal-stat:first-child:hover .stat-tooltip,
-  .modal-stat:first-child.tip-open .stat-tooltip,
-  .modal-stat:nth-child(3n+1):hover .stat-tooltip,
-  .modal-stat:nth-child(3n+1).tip-open .stat-tooltip {
-    transform: translateX(0) translateY(0);
-  }
-  .modal-stat:first-child .stat-tooltip::after,
-  .modal-stat:nth-child(3n+1) .stat-tooltip::after {
-    left: 20px;
-    transform: none;
-  }
-  .modal-stat:nth-child(3n) .stat-tooltip,
-  .modal-stat:last-child .stat-tooltip {
-    left: auto;
-    right: 0;
-    transform: translateX(0) translateY(4px);
-  }
-  .modal-stat:nth-child(3n):hover .stat-tooltip,
-  .modal-stat:nth-child(3n).tip-open .stat-tooltip,
-  .modal-stat:last-child:hover .stat-tooltip,
-  .modal-stat:last-child.tip-open .stat-tooltip {
-    transform: translateX(0) translateY(0);
-  }
-  .modal-stat:nth-child(3n) .stat-tooltip::after,
-  .modal-stat:last-child .stat-tooltip::after {
-    left: auto;
-    right: 20px;
-    transform: none;
-  }
+
+  /* The inline .stat-tooltip divs inside each modal-stat are now
+     hidden — they hold the tooltip content as data, JS reads from them */
+  .stat-tooltip { display: none; }
   .chart-container {
     margin: 16px 0;
     padding: 16px;
@@ -1236,31 +1216,6 @@
     .chart-container { padding: 10px; margin: 10px 0; }
     .chart-svg { height: 140px; }
 
-    /* On mobile, tooltips stretch across the modal width below the card
-       (rather than above), so they don't get clipped or jam against the top */
-    .stat-tooltip {
-      width: calc(100vw - 32px);
-      max-width: none;
-      bottom: auto;
-      top: calc(100% + 6px);
-      left: 50% !important;
-      right: auto !important;
-      transform: translateX(-50%) translateY(-4px) !important;
-    }
-    .modal-stat:hover .stat-tooltip,
-    .modal-stat.tip-open .stat-tooltip {
-      transform: translateX(-50%) translateY(0) !important;
-    }
-    .stat-tooltip::after {
-      top: auto !important;
-      bottom: 100%;
-      left: 50% !important;
-      right: auto !important;
-      transform: translateX(-50%) !important;
-      border-top-color: transparent;
-      border-bottom-color: var(--green);
-    }
-
     /* Help modal: also fullscreen */
     .help-modal-overlay { padding: 0; }
     .help-modal {
@@ -1527,6 +1482,9 @@
 <div class="help-modal-overlay" id="helpModalOverlay">
   <div class="help-modal" id="helpModalContent"></div>
 </div>
+
+<!-- Floating tooltip (single shared element, repositioned per trigger) -->
+<div id="floatingTooltip"></div>
 
 <script>
 // ============================================================
@@ -2668,24 +2626,144 @@ function showTickerDetail(symbol) {
   `;
   document.getElementById('modalOverlay').classList.add('active');
 
-  // Wire touch handlers: on mobile, tap toggles the tooltip (hover doesn't work).
-  // First tap opens; tapping outside or on another stat closes/transfers.
-  requestAnimationFrame(() => {
-    const stats = document.querySelectorAll('#modalContent .modal-stat');
-    stats.forEach(stat => {
-      stat.addEventListener('click', (e) => {
-        // Toggle this one, close others
-        const wasOpen = stat.classList.contains('tip-open');
-        stats.forEach(s => s.classList.remove('tip-open'));
-        if (!wasOpen) stat.classList.add('tip-open');
-        e.stopPropagation();
-      });
+  // Wire tooltip triggers — works for both hover and tap.
+  requestAnimationFrame(() => wireStatTooltips());
+}
+
+// ============================================================
+// FLOATING TOOLTIP SYSTEM
+// One shared tooltip element appended to body. Avoids any clipping by
+// modal overflow or stacking-context issues. Positioned via JS so it
+// always fits on screen regardless of where the trigger is.
+// ============================================================
+let tipHideTimer = null;
+let activeTipTrigger = null;
+
+function positionTooltip(trigger) {
+  const tip = document.getElementById('floatingTooltip');
+  if (!tip) return;
+
+  const rect = trigger.getBoundingClientRect();
+  const tipRect = tip.getBoundingClientRect();
+  const vw = window.innerWidth;
+  const vh = window.innerHeight;
+  const margin = 8;
+  const gap = 10; // space between trigger and tooltip
+
+  // Decide vertical placement: above by default, below if not enough room
+  const spaceAbove = rect.top;
+  const spaceBelow = vh - rect.bottom;
+  const placeAbove = spaceAbove >= tipRect.height + gap + margin || spaceAbove > spaceBelow;
+
+  let top;
+  if (placeAbove) {
+    top = rect.top - tipRect.height - gap;
+    tip.classList.add('above');
+    tip.classList.remove('below');
+  } else {
+    top = rect.bottom + gap;
+    tip.classList.add('below');
+    tip.classList.remove('above');
+  }
+
+  // Horizontal: try to center on trigger, clamp to viewport
+  const triggerCenter = rect.left + rect.width / 2;
+  let left = triggerCenter - tipRect.width / 2;
+  left = Math.max(margin, Math.min(left, vw - tipRect.width - margin));
+
+  // Position arrow to point at trigger center
+  const arrowX = triggerCenter - left;
+  tip.style.setProperty('--arrow-x', `${Math.max(12, Math.min(arrowX, tipRect.width - 12))}px`);
+
+  tip.style.top = `${top}px`;
+  tip.style.left = `${left}px`;
+}
+
+function showStatTooltip(trigger) {
+  const tip = document.getElementById('floatingTooltip');
+  if (!tip) return;
+
+  // Cancel any pending hide
+  if (tipHideTimer) { clearTimeout(tipHideTimer); tipHideTimer = null; }
+
+  // Find the tooltip content stored in a child .stat-tooltip div
+  const contentEl = trigger.querySelector('.stat-tooltip');
+  if (!contentEl) return;
+
+  tip.innerHTML = contentEl.innerHTML;
+  activeTipTrigger = trigger;
+
+  // Two-pass positioning: first set visible to get correct dimensions,
+  // then position. Otherwise getBoundingClientRect on the tooltip
+  // returns 0 because it was at -9999px.
+  tip.style.top = '0px';
+  tip.style.left = '0px';
+  tip.classList.add('visible');
+  // Use requestAnimationFrame to allow layout to settle
+  requestAnimationFrame(() => positionTooltip(trigger));
+}
+
+function hideStatTooltip(immediate = false) {
+  const tip = document.getElementById('floatingTooltip');
+  if (!tip) return;
+  if (immediate) {
+    tip.classList.remove('visible', 'above', 'below');
+    tip.style.top = '-9999px';
+    tip.style.left = '-9999px';
+    activeTipTrigger = null;
+  } else {
+    // Small delay so moving from trigger to tooltip doesn't flicker on desktop
+    tipHideTimer = setTimeout(() => hideStatTooltip(true), 80);
+  }
+}
+
+function wireStatTooltips() {
+  const stats = document.querySelectorAll('#modalContent .modal-stat');
+  // Detect touch capability: if available, use tap-to-toggle.
+  // On hybrid devices (iPad with mouse), both will work.
+  const hasTouch = 'ontouchstart' in window || navigator.maxTouchPoints > 0;
+
+  stats.forEach(stat => {
+    // Desktop hover
+    stat.addEventListener('mouseenter', () => {
+      showStatTooltip(stat);
     });
-    // Tapping anywhere else inside the modal closes any open tooltip
-    const modal = document.getElementById('modalContent');
-    modal.addEventListener('click', () => {
-      stats.forEach(s => s.classList.remove('tip-open'));
+    stat.addEventListener('mouseleave', () => {
+      hideStatTooltip();
     });
+
+    // Click / tap — toggles, works for both desktop click and mobile tap
+    stat.addEventListener('click', (e) => {
+      e.stopPropagation();
+      if (activeTipTrigger === stat) {
+        hideStatTooltip(true);
+      } else {
+        showStatTooltip(stat);
+      }
+    });
+  });
+
+  // Reposition on scroll inside modal (tooltip is fixed, trigger scrolls)
+  const modalScrollEl = document.getElementById('modalContent');
+  if (modalScrollEl) {
+    const scrollHandler = () => {
+      if (activeTipTrigger) positionTooltip(activeTipTrigger);
+    };
+    modalScrollEl.addEventListener('scroll', scrollHandler, { passive: true });
+  }
+
+  // Tap anywhere else (or scroll the window) dismisses the tooltip on mobile
+  document.addEventListener('click', (e) => {
+    if (!activeTipTrigger) return;
+    const tip = document.getElementById('floatingTooltip');
+    if (e.target === activeTipTrigger || activeTipTrigger.contains(e.target)) return;
+    if (tip && (e.target === tip || tip.contains(e.target))) return;
+    hideStatTooltip(true);
+  });
+
+  // Keep tooltip in sync if window resizes
+  window.addEventListener('resize', () => {
+    if (activeTipTrigger) positionTooltip(activeTipTrigger);
   });
 }
 
@@ -2737,6 +2815,7 @@ function renderDualChart(bull, bear) {
 
 function closeModal() {
   document.getElementById('modalOverlay').classList.remove('active');
+  if (typeof hideStatTooltip === 'function') hideStatTooltip(true);
 }
 document.getElementById('modalOverlay').addEventListener('click', (e) => {
   if (e.target.id === 'modalOverlay') closeModal();
