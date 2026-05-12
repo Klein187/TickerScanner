@@ -1021,6 +1021,13 @@
     text-transform: uppercase;
     margin-bottom: 12px;
   }
+  .chart-title .help-btn {
+    width: 14px;
+    height: 14px;
+    font-size: 9px;
+    margin-left: 6px;
+    vertical-align: middle;
+  }
   .chart-title-with-legend {
     display: flex;
     justify-content: space-between;
@@ -1053,29 +1060,74 @@
   .sub-breakdown {
     display: flex;
     flex-direction: column;
-    gap: 6px;
-  }
-  .sub-bar {
-    display: grid;
-    grid-template-columns: 100px 1fr 40px;
     gap: 10px;
-    align-items: center;
+  }
+  /* Stacked layout: header row (label + count) on top, bar underneath.
+     Eliminates the truncation issue from the old 100px-fixed-column layout
+     for long names like "r/SecurityAnalysis" or "r/wallstreetbets". */
+  .sub-bar {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
     font-size: 11px;
   }
-  .sub-bar-label { color: var(--text-dim); letter-spacing: 0.1em; }
+  .sub-bar-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    gap: 10px;
+  }
+  .sub-bar-label {
+    color: var(--text-bright);
+    letter-spacing: 0.05em;
+    font-weight: 500;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  /* Small colored dot next to each sub name showing its tier at a glance */
+  .sub-bar-tier-dot {
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    flex-shrink: 0;
+  }
+  .sub-bar-tier-dot.research { background: var(--purple); }
+  .sub-bar-tier-dot.quality { background: var(--blue); }
+  .sub-bar-tier-dot.momentum { background: var(--amber); }
+  .sub-bar-tier-dot.meme { background: var(--red); }
   .sub-bar-track {
-    height: 8px;
+    height: 6px;
     background: var(--border);
     position: relative;
+    overflow: hidden;
   }
   .sub-bar-fill {
     height: 100%;
     background: linear-gradient(90deg, var(--green), var(--green-bright));
+    transition: width 0.4s ease;
   }
   .sub-bar-fill.research { background: linear-gradient(90deg, var(--purple), #c4b5fd); }
   .sub-bar-fill.quality { background: linear-gradient(90deg, var(--blue), #93c5fd); }
+  .sub-bar-fill.momentum { background: linear-gradient(90deg, var(--amber), #fde68a); }
   .sub-bar-fill.meme { background: linear-gradient(90deg, var(--red), #fca5a5); }
-  .sub-bar-value { color: var(--text-bright); text-align: right; font-weight: 500; }
+  .sub-bar-value {
+    color: var(--text-dim);
+    text-align: right;
+    font-weight: 500;
+    flex-shrink: 0;
+    letter-spacing: 0.05em;
+    font-size: 10px;
+  }
+  .sub-bar-value .count-num {
+    color: var(--text-bright);
+    font-weight: 700;
+    font-size: 12px;
+  }
 
   ::-webkit-scrollbar { width: 6px; height: 6px; }
   ::-webkit-scrollbar-track { background: var(--bg); }
@@ -2962,11 +3014,17 @@ function showTickerDetail(symbol) {
       const subInfo = SUBREDDITS.find(s => s.id === sub);
       const tier = subInfo?.tier || 'momentum';
       const pct = (count / maxSubCount) * 100;
+      const postLabel = count === 1 ? 'post' : 'posts';
       return `
         <div class="sub-bar">
-          <div class="sub-bar-label">r/${sub}</div>
+          <div class="sub-bar-header">
+            <div class="sub-bar-label">
+              <span class="sub-bar-tier-dot ${tier}"></span>
+              r/${sub}
+            </div>
+            <div class="sub-bar-value"><span class="count-num">${count}</span> ${postLabel}</div>
+          </div>
           <div class="sub-bar-track"><div class="sub-bar-fill ${tier}" style="width: ${pct}%;"></div></div>
-          <div class="sub-bar-value">${count}</div>
         </div>
       `;
     }).join('');
@@ -3058,7 +3116,7 @@ function showTickerDetail(symbol) {
 
     <div class="chart-container">
       <div class="chart-title chart-title-with-legend">
-        <span>► Mention Velocity (last ${history.length} scans · ~${history.length * 10}min)</span>
+        <span>► Mention Velocity (last ${history.length} scans · ~${history.length * 10}min)<button class="help-btn" onclick="showHelp('chart-velocity')">?</button></span>
         <span class="chart-legend">
           <span class="legend-item"><span class="legend-dot" style="background: var(--green);"></span>NEW</span>
           <span class="legend-item"><span class="legend-dot" style="background: var(--text-dim);"></span>SAME</span>
@@ -3069,12 +3127,18 @@ function showTickerDetail(symbol) {
     </div>
 
     <div class="chart-container">
-      <div class="chart-title">► Sentiment Flow (bull green / bear red)</div>
+      <div class="chart-title chart-title-with-legend">
+        <span>► Sentiment Flow<button class="help-btn" onclick="showHelp('chart-sentiment')">?</button></span>
+        <span class="chart-legend">
+          <span class="legend-item"><span class="legend-dot" style="background: var(--green);"></span>BULL</span>
+          <span class="legend-item"><span class="legend-dot" style="background: var(--red);"></span>BEAR</span>
+        </span>
+      </div>
       ${renderDualChart(bullData, bearData)}
     </div>
 
     <div class="chart-container">
-      <div class="chart-title">► Subreddit Distribution</div>
+      <div class="chart-title">► Subreddit Distribution<button class="help-btn" onclick="showHelp('chart-subdist')">?</button></div>
       <div class="sub-breakdown">${subBars || '<div style="color: var(--text-dim); font-size: 11px;">No breakdown data</div>'}</div>
     </div>
 
@@ -3519,8 +3583,7 @@ function renderDualChart(bull, bear) {
       <line x1="${pad}" y1="${pad}" x2="${pad}" y2="${h - pad}" stroke="var(--border)"/>
       <polyline points="${bullPts}" fill="none" stroke="var(--green)" stroke-width="2"/>
       <polyline points="${bearPts}" fill="none" stroke="var(--red)" stroke-width="2"/>
-      <text x="${w - pad - 80}" y="${pad}" fill="var(--green)" font-size="9" font-family="JetBrains Mono">━ BULL</text>
-      <text x="${w - pad - 30}" y="${pad}" fill="var(--red)" font-size="9" font-family="JetBrains Mono">━ BEAR</text>
+      <text x="${pad}" y="${pad - 8}" fill="var(--text-dim)" font-size="9" font-family="JetBrains Mono">MAX: ${Math.round(max * 10) / 10}</text>
     </svg>
   `;
 }
@@ -3917,6 +3980,105 @@ const HELP_CONTENT = {
         <div class="help-section-label">Reset</div>
         <div class="help-section-body">
           Use <strong>CLEAR HIST</strong> to wipe all history, baselines, and first-seen data. Useful if you change subreddit selection significantly.
+        </div>
+      </div>
+    `,
+  },
+  'chart-velocity': {
+    title: 'Mention Velocity Chart',
+    tag: 'Per-scan mention trend',
+    body: `
+      <div class="help-section">
+        <div class="help-section-label">What it shows</div>
+        <div class="help-section-body">
+          Mention count for this ticker at each of the last ~24 scans (4 hours). One dot per scan. The shape of the line tells you whether interest is building, stable, or fading over the trading session.
+        </div>
+      </div>
+      <div class="help-section">
+        <div class="help-section-label">Dot colors</div>
+        <div class="help-section-body">
+          <ul>
+            <li><span style="color: var(--green); font-weight: 700;">●</span> <strong>Green</strong> — this scan added new mentions vs the previous one</li>
+            <li><span style="color: var(--text-dim); font-weight: 700;">●</span> <strong>Gray</strong> — same as previous scan (no fresh chatter)</li>
+            <li><span style="color: var(--red); font-weight: 700;">●</span> <strong>Red</strong> — fewer mentions than the previous scan</li>
+          </ul>
+        </div>
+      </div>
+      <div class="help-section">
+        <div class="help-section-label">Value labels</div>
+        <div class="help-section-body">
+          Numbers above dots only appear when the count <strong>changes</strong>. A flat run of 1s shows one "1" then nothing until it jumps. This keeps the chart readable when nothing's happening and lets your eye land on the moments that matter.
+        </div>
+      </div>
+      <div class="help-section">
+        <div class="help-section-label">Trading read</div>
+        <div class="help-section-body">
+          <strong>Stair-stepping up</strong> (consecutive green) = momentum building scan-by-scan — strongest pre-momentum signal. <strong>Flat at a high number</strong> = already priced in or at peak. <strong>Spiky / mixed</strong> = scattered interest, less actionable.
+        </div>
+      </div>
+    `,
+  },
+  'chart-sentiment': {
+    title: 'Sentiment Flow Chart',
+    tag: 'Bull vs bear language over time',
+    body: `
+      <div class="help-section">
+        <div class="help-section-label">What it shows</div>
+        <div class="help-section-body">
+          Cumulative bullish words (green line) vs bearish words (red line) detected in posts mentioning this ticker, scan by scan. Higher line = more of that sentiment.
+        </div>
+      </div>
+      <div class="help-section">
+        <div class="help-section-label">Sentiment lexicon</div>
+        <div class="help-section-body">
+          About 150 financial-Reddit terms weighted by intensity. Examples — bullish: "moon" +3, "btfd" +4, "squeeze" +3, "rocket" +3. Bearish: "bagholder" +3, "rugpull" +4, "bloodbath" +4, "crash" +4.
+        </div>
+      </div>
+      <div class="help-section">
+        <div class="help-section-label">Patterns to watch</div>
+        <div class="help-section-body">
+          <strong>Green line pulling away from red</strong> = bullish thesis spreading. <strong>Red catching up to green</strong> = sentiment turning — often happens before a top. <strong>Both lines flat</strong> = no strong opinion in either direction; ticker is just being mentioned without commitment.
+        </div>
+      </div>
+      <div class="help-section">
+        <div class="help-section-label">Divergence play</div>
+        <div class="help-section-body">
+          Cross-reference with the price column above. <strong>Strong bullish sentiment + falling price</strong> = possible dip-buy opportunity. <strong>Strong bearish sentiment + rising price</strong> = potential short setup or capitulation top.
+        </div>
+      </div>
+    `,
+  },
+  'chart-subdist': {
+    title: 'Subreddit Distribution',
+    tag: 'Where the chatter is concentrated',
+    body: `
+      <div class="help-section">
+        <div class="help-section-label">What it shows</div>
+        <div class="help-section-body">
+          Post count for this ticker broken down by subreddit, sorted by volume. Bar length = relative share. The colored dot next to each name indicates that sub's tier (meme/momentum/quality/research).
+        </div>
+      </div>
+      <div class="help-section">
+        <div class="help-section-label">Why it matters</div>
+        <div class="help-section-body">
+          A ticker discussed only in WSB is a meme play. The same ticker showing up across WSB, r/stocks, AND r/SecurityAnalysis is a different beast — different audiences arriving at the same conclusion. Breadth across tiers is a stronger signal than volume in one place.
+        </div>
+      </div>
+      <div class="help-section">
+        <div class="help-section-label">Tier colors</div>
+        <div class="help-section-body">
+          <ul>
+            <li><span style="color: var(--red); font-weight: 700;">●</span> Meme — high-volume, low-substance retail flow</li>
+            <li><span style="color: var(--amber); font-weight: 700;">●</span> Momentum — median retail, news-driven moves</li>
+            <li><span style="color: var(--blue); font-weight: 700;">●</span> Quality — long-term retail (r/investing, r/dividends)</li>
+            <li><span style="color: var(--purple); font-weight: 700;">●</span> Research — deep DD writers (small crowd, high signal)</li>
+          </ul>
+        </div>
+      </div>
+      <div class="help-section">
+        <div class="help-section-label">Read patterns</div>
+        <div class="help-section-body">
+          <strong>Dominant red bar</strong> = pure meme play, treat as vol. <strong>Spread across 3+ tier colors</strong> = broad consensus, worth deeper investigation. <strong>One purple bar with anything</strong> = someone wrote real DD on this — open the related posts section to find it.
         </div>
       </div>
     `,
