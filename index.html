@@ -658,6 +658,77 @@
 
   .post-tickers { display: flex; gap: 4px; flex-wrap: wrap; margin-top: 6px; }
 
+  /* ============ Influencer panel ============
+     Distinct styling: amber accent (vs the green default) so these posts
+     visually pop. Each post shows the user's name, a why-watch note,
+     and standard post meta. */
+  .influencer-post {
+    padding: 14px 16px;
+    border-bottom: 1px solid var(--border);
+    cursor: pointer;
+    transition: background 0.15s ease;
+    position: relative;
+  }
+  .influencer-post:hover { background: var(--bg-row); }
+  .influencer-post::before {
+    content: '';
+    position: absolute;
+    left: 0;
+    top: 0;
+    bottom: 0;
+    width: 3px;
+    background: var(--amber);
+  }
+  .influencer-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 4px;
+  }
+  .influencer-user {
+    font-size: 12px;
+    font-weight: 700;
+    color: var(--amber);
+    letter-spacing: 0.05em;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+  .influencer-badge {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 16px;
+    height: 16px;
+    background: var(--amber);
+    color: var(--bg);
+    font-size: 10px;
+    font-weight: 700;
+    border-radius: 2px;
+  }
+  .influencer-note {
+    font-size: 9px;
+    color: var(--text-dim);
+    letter-spacing: 0.05em;
+    margin-bottom: 6px;
+    font-style: italic;
+  }
+  .influencer-title {
+    color: var(--text-bright);
+    line-height: 1.4;
+    margin-bottom: 6px;
+    font-size: 12px;
+  }
+  .influencer-meta {
+    display: flex;
+    justify-content: space-between;
+    font-size: 10px;
+    color: var(--text-dim);
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    margin-bottom: 6px;
+  }
+
   .loading, .empty, .error {
     padding: 60px 20px;
     text-align: center;
@@ -1432,6 +1503,16 @@
 
       <div class="panel">
         <div class="panel-header">
+          <h2>► Influencers<button class="help-btn" onclick="showHelp('panel-influencers')">?</button></h2>
+          <div class="count" id="influencerCount">0</div>
+        </div>
+        <div id="influencerList">
+          <div class="empty">// NO INFLUENCER POSTS YET //</div>
+        </div>
+      </div>
+
+      <div class="panel">
+        <div class="panel-header">
           <h2>► Hot Posts<button class="help-btn" onclick="showHelp('panel-hot-posts')">?</button></h2>
           <div class="count" id="postCount">0</div>
         </div>
@@ -1599,6 +1680,32 @@ const SORT_OPTIONS_LONG = [
   { id: 'consensus', label: 'CONSENSUS' },
   { id: 'weighted', label: 'WEIGHTED' },
 ];
+
+// ============================================================
+// INFLUENCERS — Reddit usernames whose posts get pulled into a dedicated panel.
+// Stored case-insensitive. Edit the list to suit your watchlist. Add a
+// `note` to remind yourself why they matter.
+// Anyone here whose post appears in the current scan shows up at the top
+// of the influencers panel.
+// ============================================================
+const INFLUENCERS = [
+  { user: 'DeepFuckingValue', note: 'Roaring Kitty — GME OG, returns sporadically' },
+  { user: 'RoaringKitty', note: 'Keith Gill — YouTube / X handle, sometimes Reddit' },
+  { user: 'TheRoaringKitty', note: 'Alt handle' },
+  { user: 'Atobitt', note: 'DD writer — Citadel/PFOF investigation series' },
+  { user: 'jn_ku', note: 'WSB DD veteran — derivatives + flow analysis' },
+  { user: 'zjz', note: 'WSB old-guard DD writer' },
+  { user: 'pennyether', note: 'Long-form fundamentals DD' },
+  { user: 'WallStreetBetsCEO', note: 'WSB mod commentary' },
+  { user: '1R0NYMAN', note: 'Infamous box-spread blowup — legacy reference' },
+  { user: 'ControlTheNarrative', note: 'Famous WSB self-blowup poster' },
+  { user: 'martinshkreli', note: 'Yes that Martin Shkreli — posts on r/investing occasionally' },
+  { user: 'plotinusRespecter', note: 'Quant DD writer' },
+  { user: 'criand', note: 'GME/swap DD writer' },
+  { user: 'gherkinit', note: 'GME live streamer DD' },
+];
+// Build a case-insensitive lookup
+const INFLUENCER_MAP = new Map(INFLUENCERS.map(i => [i.user.toLowerCase(), i]));
 
 const STOPWORDS = new Set([
   'A','I','AN','AS','AT','BE','BY','DO','GO','IF','IN','IS','IT','MY','NO','OF','ON','OR','SO','TO','UP','US','WE',
@@ -2155,6 +2262,7 @@ function render() {
   renderTickersShort();
   renderTickersLong();
   renderPosts();
+  renderInfluencers();
   renderDDPosts();
   document.getElementById('lastScan').textContent = formatTime(STATE.lastScanTime);
 }
@@ -2513,6 +2621,64 @@ function renderPosts() {
     `;
   }).join('');
   document.getElementById('postCount').textContent = posts.length;
+}
+
+function renderInfluencers() {
+  const list = document.getElementById('influencerList');
+  const countEl = document.getElementById('influencerCount');
+  if (!list) return;
+
+  // Filter posts whose author matches our influencer list
+  const matches = STATE.posts.filter(p => {
+    if (!p.author) return false;
+    return INFLUENCER_MAP.has(p.author.toLowerCase());
+  });
+
+  // Sort by score desc
+  matches.sort((a, b) => b.score - a.score);
+
+  if (matches.length === 0) {
+    list.innerHTML = `
+      <div class="empty" style="padding: 24px 16px;">
+        // NO INFLUENCER POSTS THIS SCAN //
+        <div style="margin-top: 12px; font-size: 9px; color: var(--text-dim); letter-spacing: 0.15em; text-transform: none; line-height: 1.5;">
+          Watching ${INFLUENCERS.length} users including<br>
+          ${INFLUENCERS.slice(0, 4).map(i => 'u/' + i.user).join(', ')}, ...
+        </div>
+      </div>`;
+    countEl.textContent = '0';
+    return;
+  }
+
+  list.innerHTML = matches.map(p => {
+    const info = INFLUENCER_MAP.get(p.author.toLowerCase());
+    const net = p.sentiment?.net || 0;
+    const sentClass = net > 2 ? 'bull' : net < -2 ? 'bear' : 'neutral';
+    const sentLabel = net > 2 ? 'BULL' : net < -2 ? 'BEAR' : 'NEUT';
+    const tickers = (p.tickers || []).slice(0, 6);
+    return `
+      <div class="influencer-post" onclick="window.open('${p.permalink}', '_blank')">
+        <div class="influencer-header">
+          <div class="influencer-user">
+            <span class="influencer-badge">★</span>
+            u/${escapeHtml(p.author)}
+          </div>
+          <span class="post-sentiment ${sentClass}">${sentLabel}</span>
+        </div>
+        ${info?.note ? `<div class="influencer-note">${escapeHtml(info.note)}</div>` : ''}
+        <div class="influencer-title">${escapeHtml(p.title)}</div>
+        <div class="influencer-meta">
+          <span>r/${p.subreddit}</span>
+          <span>${p.score.toLocaleString()} ↑ · ${p.num_comments} 💬</span>
+        </div>
+        ${tickers.length > 0 ? `
+          <div class="post-tickers">
+            ${tickers.map(t => `<span class="ticker-tag">$${t}</span>`).join('')}
+          </div>` : ''}
+      </div>
+    `;
+  }).join('');
+  countEl.textContent = matches.length;
 }
 
 function renderDDPosts() {
@@ -3556,7 +3722,37 @@ const HELP_CONTENT = {
     body: `
       <div class="help-section">
         <div class="help-section-body">
-          Most recent Reddit posts that contained at least one ticker. Color-coded sentiment tag (BULL / BEAR / NEUT) based on the post text. Click to open the Reddit thread.
+          Most recent Reddit posts containing at least one ticker. Color-coded sentiment tag (BULL / BEAR / NEUT) based on the post text.
+        </div>
+      </div>
+      <div class="help-section">
+        <div class="help-section-label">Consolidation</div>
+        <div class="help-section-body">
+          Posts with the same title and same author across multiple subs are merged into one entry. A purple <strong>×N badge</strong> shows how many subs picked it up. Each subreddit becomes a clickable chip linking to that specific instance of the post.
+        </div>
+      </div>
+    `,
+  },
+  'panel-influencers': {
+    title: 'Influencer Posts',
+    tag: 'Watched user accounts',
+    body: `
+      <div class="help-section">
+        <div class="help-section-label">What it shows</div>
+        <div class="help-section-body">
+          Posts from a watchlist of notable retail-finance Reddit users — Roaring Kitty (DeepFuckingValue), historical DD writers, and known market-moving accounts. When any of these post in your selected subreddits, they appear here separated from the general post feed.
+        </div>
+      </div>
+      <div class="help-section">
+        <div class="help-section-label">Why separate them</div>
+        <div class="help-section-body">
+          One DFV post can move a stock 50% in an hour. These users have outsized impact and you don't want them buried in noise. The amber border + ★ badge makes them visually distinct from regular Hot Posts.
+        </div>
+      </div>
+      <div class="help-section">
+        <div class="help-section-label">Customizing the list</div>
+        <div class="help-section-body">
+          The watchlist is defined in the page source (search for <code>INFLUENCERS</code>). You can add or remove users by editing that array — set a <code>note</code> to remind yourself why each user matters.
         </div>
       </div>
     `,
@@ -3632,43 +3828,94 @@ function setStatus(type, text) {
   pulse.className = 'pulse' + (type === 'error' ? ' error' : type === 'scanning' ? ' idle' : '');
   document.getElementById('statusText').textContent = text;
 }
+// Returns the next moment (Date) at which the auto-scan window opens,
+// looking forward from `now`. Returns null if there's no such moment
+// within 7 days (shouldn't happen, but defensive).
+function nextWindowOpen(now = new Date()) {
+  // Search day-by-day for the next weekday whose 8:30am ET we haven't passed yet.
+  // For each candidate day, construct a Date that represents 8:30am ET on that
+  // day, then return the earliest one that's in the future.
+  for (let dayOffset = 0; dayOffset <= 7; dayOffset++) {
+    // We need to construct "8:30am ET on (now + dayOffset days)".
+    // Easiest: take a Date at the same instant + dayOffset days, ask Intl for
+    // its ET weekday/date, and then walk minutes forward from there until we
+    // find the open boundary on that day.
+    const candidate = new Date(now.getTime() + dayOffset * 24 * 60 * 60 * 1000);
+    const parts = getETParts(candidate);
+    if (parts.weekday === 'Sat' || parts.weekday === 'Sun') continue;
+
+    // Compute how many minutes from 'candidate' until 8:30am ET on its own date.
+    // candidate is at some ET time of day; we want to roll it to 8:30am ET.
+    const candidateMinET = parts.hour * 60 + parts.minute;
+    const openMinET = MARKET_OPEN_HOUR_ET * 60 + MARKET_OPEN_MIN_ET - (BUFFER_HOURS * 60); // 8:30am = 510
+    const minutesToOpen = openMinET - candidateMinET;
+    // If this day's open is in the past (candidateMinET > openMinET), and dayOffset
+    // is 0, we need to move on. If it's >= 0, we have a future open today.
+    const targetTs = candidate.getTime() + minutesToOpen * 60 * 1000;
+    if (targetTs <= now.getTime()) continue;
+    // Also verify the resulting moment is actually inside a valid window
+    // (handles edge cases at the boundary)
+    if (!isAutoScanWindow(new Date(targetTs))) continue;
+    return new Date(targetTs);
+  }
+  return null;
+}
+
 function updateCountdown() {
   const el = document.getElementById('countdown');
   const labelEl = document.getElementById('countdownLabel');
   const inWindow = isAutoScanWindow();
+  const now = Date.now();
 
-  // Toggle the surrounding "NEXT" label to "MARKET OPENS" when closed
   if (labelEl) {
-    labelEl.textContent = inWindow ? 'NEXT' : 'MARKET';
+    labelEl.textContent = inWindow ? 'NEXT' : 'OPENS';
   }
 
-  if (!STATE.nextScanAt) {
-    el.textContent = inWindow ? '—' : 'CLOSED';
-    return;
-  }
-  const remaining = Math.max(0, STATE.nextScanAt - Date.now());
-
-  if (!inWindow) {
-    // Show a longer-form countdown: days/hours/mins until market reopens
-    const totalMins = Math.floor(remaining / 60000);
-    if (totalMins < 60) {
-      el.textContent = `OPENS ${totalMins}m`;
-    } else if (totalMins < 60 * 24) {
-      const hrs = Math.floor(totalMins / 60);
-      const mins = totalMins % 60;
-      el.textContent = `OPENS ${hrs}h ${String(mins).padStart(2, '0')}m`;
-    } else {
-      const days = Math.floor(totalMins / (60 * 24));
-      const hrs = Math.floor((totalMins % (60 * 24)) / 60);
-      el.textContent = `OPENS ${days}d ${hrs}h`;
+  if (inWindow) {
+    // In-window: use the scheduler's nextScanAt for the 10-min countdown.
+    // (Falls back to "—" if not yet scheduled.)
+    if (!STATE.nextScanAt) {
+      el.textContent = '—';
+      return;
     }
+    const remaining = Math.max(0, STATE.nextScanAt - now);
+    const mins = Math.floor(remaining / 60000);
+    const secs = Math.floor((remaining % 60000) / 1000);
+    el.textContent = `${String(mins).padStart(2, '0')}:${String(secs).padStart(2, '0')}`;
     return;
   }
 
-  // In-window: regular mm:ss countdown
-  const mins = Math.floor(remaining / 60000);
-  const secs = Math.floor((remaining % 60000) / 1000);
-  el.textContent = `${String(mins).padStart(2, '0')}:${String(secs).padStart(2, '0')}`;
+  // Out-of-window: compute fresh from current time each tick.
+  // This is self-correcting — doesn't matter if the scheduler timer is stale.
+  const openMoment = nextWindowOpen(new Date(now));
+  if (!openMoment) {
+    el.textContent = 'CLOSED';
+    return;
+  }
+  const remaining = openMoment.getTime() - now;
+  const totalMins = Math.floor(remaining / 60000);
+
+  // Friendly format with the actual local time of next open
+  // (so user can verify "yes, 8:30am ET tomorrow" matches their expectation)
+  const localTimeStr = openMoment.toLocaleTimeString([], {
+    hour: 'numeric',
+    minute: '2-digit',
+    hour12: true,
+  });
+
+  let countdownStr;
+  if (totalMins < 60) {
+    countdownStr = `${totalMins}m`;
+  } else if (totalMins < 60 * 24) {
+    const hrs = Math.floor(totalMins / 60);
+    const mins = totalMins % 60;
+    countdownStr = `${hrs}h ${String(mins).padStart(2, '0')}m`;
+  } else {
+    const days = Math.floor(totalMins / (60 * 24));
+    const hrs = Math.floor((totalMins % (60 * 24)) / 60);
+    countdownStr = `${days}d ${hrs}h`;
+  }
+  el.textContent = `${countdownStr} · ${localTimeStr}`;
 }
 
 function renderSubPills() {
