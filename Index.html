@@ -1,0 +1,2990 @@
+<!DOCTYPE html>
+
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>TICKER//SCAN v3 — Dual-Horizon Reddit Intel</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;500;700;800&family=Major+Mono+Display&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #0a0e0a;
+    --bg-panel: #0f1410;
+    --bg-row: #131913;
+    --border: #1f2a1f;
+    --text: #c8d4c8;
+    --text-dim: #6b7a6b;
+    --text-bright: #e8f0e8;
+    --green: #4ade80;
+    --green-bright: #86efac;
+    --green-glow: rgba(74, 222, 128, 0.15);
+    --red: #ef4444;
+    --amber: #fbbf24;
+    --blue: #60a5fa;
+    --purple: #a78bfa;
+    --grid-line: rgba(74, 222, 128, 0.04);
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    font-family: 'JetBrains Mono', monospace;
+    background: var(--bg);
+    color: var(--text);
+    min-height: 100vh;
+    background-image:
+      linear-gradient(var(--grid-line) 1px, transparent 1px),
+      linear-gradient(90deg, var(--grid-line) 1px, transparent 1px);
+    background-size: 32px 32px;
+  }
+  body::before {
+    content: '';
+    position: fixed;
+    inset: 0;
+    background: radial-gradient(ellipse at top, rgba(74, 222, 128, 0.06), transparent 60%);
+    pointer-events: none;
+    z-index: 0;
+  }
+  .container { max-width: 1500px; margin: 0 auto; padding: 24px 20px 60px; position: relative; z-index: 1; }
+
+header {
+display: flex;
+justify-content: space-between;
+align-items: flex-end;
+padding-bottom: 20px;
+border-bottom: 1px solid var(–border);
+margin-bottom: 20px;
+flex-wrap: wrap;
+gap: 16px;
+}
+.brand h1 {
+font-family: ‘Major Mono Display’, monospace;
+font-size: clamp(28px, 5vw, 42px);
+color: var(–green-bright);
+letter-spacing: -0.02em;
+line-height: 1;
+text-shadow: 0 0 30px var(–green-glow);
+}
+.brand .sub {
+font-size: 11px;
+color: var(–text-dim);
+letter-spacing: 0.3em;
+text-transform: uppercase;
+margin-top: 4px;
+}
+.status-bar {
+display: flex;
+gap: 20px;
+align-items: center;
+font-size: 11px;
+letter-spacing: 0.15em;
+text-transform: uppercase;
+flex-wrap: wrap;
+}
+.status-item { display: flex; gap: 8px; align-items: center; color: var(–text-dim); }
+.status-item strong { color: var(–text-bright); font-weight: 500; }
+.pulse {
+width: 8px; height: 8px; border-radius: 50%;
+background: var(–green);
+box-shadow: 0 0 12px var(–green);
+animation: pulse 2s ease-in-out infinite;
+}
+@keyframes pulse {
+0%, 100% { opacity: 1; transform: scale(1); }
+50% { opacity: 0.5; transform: scale(0.85); }
+}
+.pulse.error { background: var(–red); box-shadow: 0 0 12px var(–red); }
+.pulse.idle { background: var(–amber); box-shadow: 0 0 12px var(–amber); }
+.countdown { font-size: 11px; color: var(–text-dim); letter-spacing: 0.15em; }
+.countdown span { color: var(–green); font-weight: 700; }
+
+/* Mega tabs */
+.mega-tabs {
+display: flex;
+gap: 0;
+margin-bottom: 24px;
+border-bottom: 1px solid var(–border);
+}
+.mega-tab {
+flex: 1;
+padding: 18px 20px;
+background: transparent;
+border: none;
+border-top: 1px solid var(–border);
+border-left: 1px solid var(–border);
+border-right: 1px solid var(–border);
+color: var(–text-dim);
+font-family: inherit;
+font-size: 13px;
+letter-spacing: 0.3em;
+text-transform: uppercase;
+cursor: pointer;
+transition: all 0.2s ease;
+position: relative;
+text-align: left;
+}
+.mega-tab:hover { color: var(–text-bright); background: var(–bg-panel); }
+.mega-tab.active {
+color: var(–green-bright);
+background: var(–bg-panel);
+border-bottom: 1px solid var(–bg-panel);
+margin-bottom: -1px;
+}
+.mega-tab .tab-num {
+font-family: ‘Major Mono Display’, monospace;
+font-size: 11px;
+color: var(–text-dim);
+display: block;
+margin-bottom: 6px;
+}
+.mega-tab.active .tab-num { color: var(–green); }
+.mega-tab .tab-desc {
+display: block;
+font-size: 10px;
+color: var(–text-dim);
+letter-spacing: 0.15em;
+margin-top: 4px;
+text-transform: none;
+font-weight: 300;
+}
+.mega-tab.active::after {
+content: ‘◄’;
+position: absolute;
+right: 14px;
+top: 50%;
+transform: translateY(-50%);
+color: var(–green);
+font-size: 14px;
+}
+
+.controls {
+display: flex;
+flex-wrap: wrap;
+gap: 16px;
+margin-bottom: 24px;
+padding: 14px 16px;
+background: var(–bg-panel);
+border: 1px solid var(–border);
+align-items: center;
+}
+.control-group { display: flex; flex-direction: column; gap: 6px; }
+.control-group label {
+font-size: 10px;
+letter-spacing: 0.2em;
+color: var(–text-dim);
+text-transform: uppercase;
+}
+.sub-pills { display: flex; flex-wrap: wrap; gap: 6px; }
+
+.preset-pills {
+display: flex;
+flex-wrap: wrap;
+gap: 8px;
+}
+.preset-pill {
+font-family: inherit;
+font-size: 11px;
+padding: 8px 14px;
+background: transparent;
+border: 1px solid var(–border);
+color: var(–text-dim);
+cursor: pointer;
+letter-spacing: 0.1em;
+text-transform: uppercase;
+transition: all 0.15s ease;
+display: flex;
+flex-direction: column;
+align-items: flex-start;
+gap: 3px;
+min-width: 140px;
+text-align: left;
+}
+.preset-pill:hover {
+border-color: var(–green);
+color: var(–green);
+background: rgba(74, 222, 128, 0.05);
+}
+.preset-pill.active {
+border-color: var(–green);
+color: var(–green-bright);
+background: rgba(74, 222, 128, 0.1);
+box-shadow: inset 0 0 0 1px var(–green);
+}
+.preset-pill .preset-name {
+font-weight: 700;
+font-size: 11px;
+letter-spacing: 0.15em;
+}
+.preset-pill .preset-desc {
+font-size: 9px;
+color: var(–text-dim);
+letter-spacing: 0.05em;
+text-transform: none;
+font-weight: 400;
+}
+.preset-pill.active .preset-desc {
+color: var(–text);
+}
+.preset-pill .preset-icon {
+font-family: ‘Major Mono Display’, monospace;
+font-size: 9px;
+color: var(–text-dim);
+margin-bottom: 2px;
+}
+.preset-pill.active .preset-icon { color: var(–green); }
+.pill {
+font-family: inherit;
+font-size: 11px;
+padding: 6px 12px;
+background: transparent;
+border: 1px solid var(–border);
+color: var(–text-dim);
+cursor: pointer;
+letter-spacing: 0.05em;
+transition: all 0.15s ease;
+}
+.pill:hover { border-color: var(–green); color: var(–green); }
+.pill.active {
+background: var(–green);
+color: var(–bg);
+border-color: var(–green);
+font-weight: 700;
+}
+.btn {
+font-family: inherit;
+font-size: 11px;
+padding: 8px 14px;
+background: var(–green);
+border: 1px solid var(–green);
+color: var(–bg);
+cursor: pointer;
+letter-spacing: 0.15em;
+text-transform: uppercase;
+font-weight: 700;
+}
+.btn:hover { background: var(–green-bright); }
+.btn.secondary { background: transparent; color: var(–green); }
+.btn.secondary:hover { background: var(–green); color: var(–bg); }
+
+.stats-row {
+display: grid;
+grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+gap: 10px;
+margin-bottom: 20px;
+}
+.stat-card {
+background: var(–bg-panel);
+border: 1px solid var(–border);
+padding: 12px 14px;
+}
+.stat-card .label {
+font-size: 9px;
+color: var(–text-dim);
+letter-spacing: 0.2em;
+text-transform: uppercase;
+margin-bottom: 4px;
+}
+.stat-card .value {
+font-size: 22px;
+color: var(–green-bright);
+font-weight: 500;
+}
+
+.grid-layout {
+display: grid;
+grid-template-columns: 1fr 380px;
+gap: 20px;
+}
+@media (max-width: 1024px) {
+.grid-layout { grid-template-columns: 1fr; }
+}
+.panel { background: var(–bg-panel); border: 1px solid var(–border); }
+.panel-header {
+padding: 12px 16px;
+border-bottom: 1px solid var(–border);
+display: flex;
+justify-content: space-between;
+align-items: center;
+}
+.panel-header h2 {
+font-size: 11px;
+letter-spacing: 0.25em;
+color: var(–text-bright);
+text-transform: uppercase;
+font-weight: 500;
+}
+.panel-header .count { font-size: 10px; color: var(–text-dim); letter-spacing: 0.15em; }
+
+/* SHORT-TERM ticker row */
+.ticker-row-short {
+display: grid;
+grid-template-columns: 36px 100px 1fr 80px 70px 70px 60px;
+align-items: center;
+padding: 10px 14px;
+border-bottom: 1px solid var(–border);
+cursor: pointer;
+gap: 10px;
+transition: background 0.15s ease;
+}
+.ticker-row-short:hover { background: var(–bg-row); }
+
+.ticker-header-short {
+display: grid;
+grid-template-columns: 36px 100px 1fr 80px 70px 70px 60px;
+padding: 8px 14px;
+border-bottom: 1px solid var(–border);
+gap: 10px;
+background: var(–bg);
+}
+.ticker-header-short > div {
+font-size: 9px;
+color: var(–text-dim);
+letter-spacing: 0.2em;
+text-transform: uppercase;
+}
+.ticker-header-short > div:nth-child(4),
+.ticker-header-short > div:nth-child(5),
+.ticker-header-short > div:nth-child(6),
+.ticker-header-short > div:nth-child(7) { text-align: right; }
+
+/* LONG-TERM ticker row — different layout, more emphasis on quality */
+.ticker-row-long {
+display: grid;
+grid-template-columns: 36px 90px 1fr 80px 90px 70px 70px;
+align-items: center;
+padding: 12px 14px;
+border-bottom: 1px solid var(–border);
+cursor: pointer;
+gap: 10px;
+transition: background 0.15s ease;
+}
+.ticker-row-long:hover { background: var(–bg-row); }
+.ticker-header-long {
+display: grid;
+grid-template-columns: 36px 90px 1fr 80px 90px 70px 70px;
+padding: 8px 14px;
+border-bottom: 1px solid var(–border);
+gap: 10px;
+background: var(–bg);
+}
+.ticker-header-long > div {
+font-size: 9px;
+color: var(–text-dim);
+letter-spacing: 0.2em;
+text-transform: uppercase;
+}
+.ticker-header-long > div:nth-child(4),
+.ticker-header-long > div:nth-child(5),
+.ticker-header-long > div:nth-child(6),
+.ticker-header-long > div:nth-child(7) { text-align: right; }
+
+.rank { font-size: 11px; color: var(–text-dim); letter-spacing: 0.1em; }
+.ticker-info { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.ticker-symbol {
+font-size: 16px;
+font-weight: 700;
+color: var(–green-bright);
+letter-spacing: 0.05em;
+}
+.ticker-meta {
+font-size: 10px;
+color: var(–text-dim);
+letter-spacing: 0.1em;
+white-space: nowrap;
+overflow: hidden;
+text-overflow: ellipsis;
+}
+
+/* Tier badges */
+.tier-badge {
+display: inline-block;
+font-size: 8px;
+padding: 2px 5px;
+letter-spacing: 0.1em;
+margin-top: 3px;
+font-weight: 700;
+}
+.tier-meme { background: rgba(239, 68, 68, 0.15); color: var(–red); border: 1px solid rgba(239, 68, 68, 0.3); }
+.tier-momentum { background: rgba(251, 191, 36, 0.15); color: var(–amber); border: 1px solid rgba(251, 191, 36, 0.3); }
+.tier-quality { background: rgba(96, 165, 250, 0.15); color: var(–blue); border: 1px solid rgba(96, 165, 250, 0.3); }
+.tier-research { background: rgba(167, 139, 250, 0.15); color: var(–purple); border: 1px solid rgba(167, 139, 250, 0.3); }
+
+.sparkline { width: 100%; height: 28px; }
+
+.zscore {
+text-align: right;
+font-size: 13px;
+font-weight: 700;
+letter-spacing: 0.05em;
+}
+.zscore.hot { color: var(–red); }
+.zscore.warm { color: var(–amber); }
+.zscore.flat { color: var(–text-dim); }
+
+.price-cell { text-align: right; }
+.price {
+font-size: 13px;
+font-weight: 500;
+color: var(–text-bright);
+line-height: 1.2;
+}
+.price-change {
+font-size: 10px;
+letter-spacing: 0.05em;
+margin-top: 2px;
+}
+.price-change.up { color: var(–green); }
+.price-change.down { color: var(–red); }
+.price-change.flat { color: var(–text-dim); }
+.price-na { font-size: 10px; color: var(–text-dim); letter-spacing: 0.1em; }
+
+.mentions-cell {
+text-align: right;
+font-size: 15px;
+font-weight: 500;
+color: var(–text-bright);
+}
+.num-cell {
+text-align: right;
+font-size: 13px;
+font-weight: 500;
+color: var(–text-bright);
+}
+
+.sentiment-cell {
+display: flex;
+flex-direction: column;
+align-items: flex-end;
+gap: 3px;
+}
+.sentiment-score {
+font-size: 12px;
+font-weight: 700;
+letter-spacing: 0.05em;
+}
+.sentiment-score.bull { color: var(–green); }
+.sentiment-score.bear { color: var(–red); }
+.sentiment-score.neutral { color: var(–text-dim); }
+.sentiment-bar-mini {
+width: 50px;
+height: 3px;
+background: var(–border);
+overflow: hidden;
+}
+.sentiment-fill-mini { height: 100%; transition: width 0.5s ease; }
+.sentiment-fill-mini.bull { background: var(–green); }
+.sentiment-fill-mini.bear { background: var(–red); }
+
+/* Quality score visualization */
+.quality-score {
+display: flex;
+flex-direction: column;
+align-items: flex-end;
+gap: 3px;
+}
+.quality-value {
+font-size: 13px;
+font-weight: 700;
+color: var(–purple);
+letter-spacing: 0.05em;
+}
+.quality-dots {
+display: flex;
+gap: 2px;
+}
+.quality-dot {
+width: 5px;
+height: 5px;
+background: var(–border);
+}
+.quality-dot.filled { background: var(–purple); }
+
+/* Persistence visualization */
+.persistence-cell {
+display: flex;
+flex-direction: column;
+align-items: flex-end;
+gap: 3px;
+}
+.persistence-days {
+font-size: 13px;
+font-weight: 700;
+color: var(–blue);
+}
+.persistence-label {
+font-size: 9px;
+color: var(–text-dim);
+letter-spacing: 0.1em;
+}
+
+/* DD post panel */
+.dd-post {
+padding: 14px 16px;
+border-bottom: 1px solid var(–border);
+cursor: pointer;
+transition: background 0.15s ease;
+}
+.dd-post:hover { background: var(–bg-row); }
+.dd-post-title {
+font-size: 12px;
+color: var(–text-bright);
+line-height: 1.4;
+margin-bottom: 8px;
+}
+.dd-post-meta {
+display: flex;
+justify-content: space-between;
+font-size: 10px;
+color: var(–text-dim);
+letter-spacing: 0.1em;
+text-transform: uppercase;
+margin-bottom: 6px;
+}
+.dd-quality-bar {
+display: flex;
+align-items: center;
+gap: 6px;
+font-size: 10px;
+color: var(–purple);
+margin-bottom: 6px;
+}
+.dd-quality-bar-fill {
+flex: 1;
+height: 4px;
+background: var(–border);
+overflow: hidden;
+}
+.dd-quality-bar-fill div {
+height: 100%;
+background: var(–purple);
+}
+.dd-tickers {
+display: flex;
+gap: 4px;
+flex-wrap: wrap;
+}
+.ticker-tag {
+font-size: 9px;
+padding: 2px 6px;
+background: rgba(74, 222, 128, 0.1);
+color: var(–green);
+border: 1px solid rgba(74, 222, 128, 0.3);
+letter-spacing: 0.1em;
+}
+
+/* Recent posts (short-term) */
+.post-item {
+padding: 12px 16px;
+border-bottom: 1px solid var(–border);
+font-size: 12px;
+cursor: pointer;
+transition: background 0.15s ease;
+}
+.post-item:hover { background: var(–bg-row); }
+.post-title {
+color: var(–text-bright);
+line-height: 1.4;
+margin-bottom: 6px;
+display: -webkit-box;
+-webkit-line-clamp: 2;
+-webkit-box-orient: vertical;
+overflow: hidden;
+}
+.post-meta {
+display: flex;
+justify-content: space-between;
+font-size: 10px;
+color: var(–text-dim);
+letter-spacing: 0.1em;
+text-transform: uppercase;
+}
+.post-sentiment {
+display: inline-block;
+padding: 1px 5px;
+font-weight: 700;
+margin-left: 6px;
+}
+.post-sentiment.bull { background: rgba(74, 222, 128, 0.15); color: var(–green); }
+.post-sentiment.bear { background: rgba(239, 68, 68, 0.15); color: var(–red); }
+.post-sentiment.neutral { background: rgba(107, 122, 107, 0.15); color: var(–text-dim); }
+.post-tickers { display: flex; gap: 4px; flex-wrap: wrap; margin-top: 6px; }
+
+.loading, .empty, .error {
+padding: 60px 20px;
+text-align: center;
+font-size: 11px;
+color: var(–text-dim);
+letter-spacing: 0.2em;
+text-transform: uppercase;
+}
+.error { color: var(–red); line-height: 1.6; }
+.scanline { display: inline-block; animation: scan 1.5s linear infinite; }
+@keyframes scan {
+0%, 100% { opacity: 0.3; }
+50% { opacity: 1; }
+}
+
+.delta {
+font-size: 9px;
+letter-spacing: 0.05em;
+margin-top: 2px;
+}
+.delta.up { color: var(–green); }
+.delta.down { color: var(–red); }
+
+.new-tag {
+display: inline-block;
+font-size: 8px;
+padding: 1px 4px;
+background: var(–green);
+color: var(–bg);
+font-weight: 700;
+letter-spacing: 0.1em;
+margin-left: 4px;
+}
+
+.view-section { display: none; }
+.view-section.active { display: block; }
+
+.footer-note {
+margin-top: 24px;
+font-size: 10px;
+color: var(–text-dim);
+letter-spacing: 0.15em;
+text-align: center;
+text-transform: uppercase;
+}
+
+/* Modal */
+.modal-overlay {
+position: fixed; inset: 0;
+background: rgba(0, 0, 0, 0.85);
+display: none;
+align-items: center;
+justify-content: center;
+z-index: 100;
+padding: 20px;
+}
+.modal-overlay.active { display: flex; }
+.modal {
+background: var(–bg-panel);
+border: 1px solid var(–green);
+max-width: 800px;
+width: 100%;
+max-height: 90vh;
+overflow-y: auto;
+padding: 24px;
+box-shadow: 0 0 60px var(–green-glow);
+}
+.modal-header {
+display: flex;
+justify-content: space-between;
+align-items: flex-start;
+margin-bottom: 20px;
+padding-bottom: 16px;
+border-bottom: 1px solid var(–border);
+}
+.modal-title {
+font-family: ‘Major Mono Display’, monospace;
+font-size: 32px;
+color: var(–green-bright);
+}
+.modal-close {
+background: transparent;
+border: 1px solid var(–border);
+color: var(–text-dim);
+padding: 6px 10px;
+cursor: pointer;
+font-family: inherit;
+font-size: 11px;
+letter-spacing: 0.15em;
+}
+.modal-close:hover { border-color: var(–red); color: var(–red); }
+.modal-stats {
+display: grid;
+grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+gap: 10px;
+margin-bottom: 20px;
+}
+.modal-stat { background: var(–bg); padding: 10px 12px; border: 1px solid var(–border); }
+.modal-stat .label {
+font-size: 9px;
+color: var(–text-dim);
+letter-spacing: 0.2em;
+text-transform: uppercase;
+margin-bottom: 4px;
+}
+.modal-stat .value { font-size: 16px; color: var(–text-bright); font-weight: 500; }
+.chart-container {
+margin: 16px 0;
+padding: 16px;
+background: var(–bg);
+border: 1px solid var(–border);
+}
+.chart-title {
+font-size: 10px;
+color: var(–text-dim);
+letter-spacing: 0.2em;
+text-transform: uppercase;
+margin-bottom: 12px;
+}
+.chart-svg { width: 100%; height: 180px; }
+
+/* Sub weight breakdown */
+.sub-breakdown {
+display: flex;
+flex-direction: column;
+gap: 6px;
+}
+.sub-bar {
+display: grid;
+grid-template-columns: 100px 1fr 40px;
+gap: 10px;
+align-items: center;
+font-size: 11px;
+}
+.sub-bar-label { color: var(–text-dim); letter-spacing: 0.1em; }
+.sub-bar-track {
+height: 8px;
+background: var(–border);
+position: relative;
+}
+.sub-bar-fill {
+height: 100%;
+background: linear-gradient(90deg, var(–green), var(–green-bright));
+}
+.sub-bar-fill.research { background: linear-gradient(90deg, var(–purple), #c4b5fd); }
+.sub-bar-fill.quality { background: linear-gradient(90deg, var(–blue), #93c5fd); }
+.sub-bar-fill.meme { background: linear-gradient(90deg, var(–red), #fca5a5); }
+.sub-bar-value { color: var(–text-bright); text-align: right; font-weight: 500; }
+
+::-webkit-scrollbar { width: 6px; height: 6px; }
+::-webkit-scrollbar-track { background: var(–bg); }
+::-webkit-scrollbar-thumb { background: var(–border); }
+::-webkit-scrollbar-thumb:hover { background: var(–green); }
+
+/* ============ Help buttons & modal ============ */
+.help-btn {
+display: inline-flex;
+align-items: center;
+justify-content: center;
+width: 18px;
+height: 18px;
+border-radius: 50%;
+background: transparent;
+border: 1px solid var(–border);
+color: var(–text-dim);
+font-family: inherit;
+font-size: 10px;
+font-weight: 700;
+cursor: pointer;
+margin-left: 8px;
+transition: all 0.15s ease;
+flex-shrink: 0;
+padding: 0;
+line-height: 1;
+}
+.help-btn:hover {
+background: var(–green);
+color: var(–bg);
+border-color: var(–green);
+transform: scale(1.1);
+}
+.help-btn.tab-help {
+width: 22px;
+height: 22px;
+font-size: 11px;
+}
+
+.help-modal-overlay {
+position: fixed;
+inset: 0;
+background: rgba(0, 0, 0, 0.85);
+display: none;
+align-items: center;
+justify-content: center;
+z-index: 200;
+padding: 20px;
+}
+.help-modal-overlay.active { display: flex; }
+.help-modal {
+background: var(–bg-panel);
+border: 1px solid var(–green);
+max-width: 640px;
+width: 100%;
+max-height: 85vh;
+overflow-y: auto;
+padding: 28px;
+box-shadow: 0 0 60px var(–green-glow);
+position: relative;
+}
+.help-modal-header {
+display: flex;
+justify-content: space-between;
+align-items: flex-start;
+margin-bottom: 20px;
+padding-bottom: 14px;
+border-bottom: 1px solid var(–border);
+}
+.help-modal-title {
+font-family: ‘Major Mono Display’, monospace;
+font-size: 22px;
+color: var(–green-bright);
+letter-spacing: -0.01em;
+}
+.help-modal-tag {
+font-size: 10px;
+color: var(–text-dim);
+letter-spacing: 0.25em;
+text-transform: uppercase;
+margin-top: 4px;
+}
+.help-modal-close {
+background: transparent;
+border: 1px solid var(–border);
+color: var(–text-dim);
+padding: 6px 10px;
+cursor: pointer;
+font-family: inherit;
+font-size: 11px;
+letter-spacing: 0.15em;
+}
+.help-modal-close:hover { border-color: var(–red); color: var(–red); }
+
+.help-section {
+margin-bottom: 18px;
+}
+.help-section:last-child { margin-bottom: 0; }
+.help-section-label {
+font-size: 10px;
+color: var(–green);
+letter-spacing: 0.25em;
+text-transform: uppercase;
+margin-bottom: 8px;
+font-weight: 700;
+}
+.help-section-body {
+font-size: 13px;
+line-height: 1.65;
+color: var(–text);
+}
+.help-section-body strong { color: var(–text-bright); font-weight: 700; }
+.help-section-body code {
+background: var(–bg);
+color: var(–amber);
+padding: 1px 5px;
+border: 1px solid var(–border);
+font-size: 12px;
+}
+.help-section-body ul {
+margin: 8px 0 0 0;
+padding-left: 18px;
+}
+.help-section-body li {
+margin-bottom: 6px;
+}
+.help-section-body .tier-inline {
+display: inline-block;
+font-size: 9px;
+padding: 1px 5px;
+letter-spacing: 0.1em;
+font-weight: 700;
+margin: 0 2px;
+}
+
+/* When help is in a panel-header, push it to the right edge */
+.panel-header h2 {
+display: flex;
+align-items: center;
+}
+.stat-card .label {
+display: flex;
+align-items: center;
+justify-content: space-between;
+}
+.control-group label {
+display: flex;
+align-items: center;
+}
+.ticker-header-short > div,
+.ticker-header-long > div {
+display: flex;
+align-items: center;
+}
+.ticker-header-short > div:nth-child(4),
+.ticker-header-short > div:nth-child(5),
+.ticker-header-short > div:nth-child(6),
+.ticker-header-short > div:nth-child(7),
+.ticker-header-long > div:nth-child(4),
+.ticker-header-long > div:nth-child(5),
+.ticker-header-long > div:nth-child(6),
+.ticker-header-long > div:nth-child(7) {
+justify-content: flex-end;
+}
+.ticker-header-short .help-btn,
+.ticker-header-long .help-btn {
+width: 14px;
+height: 14px;
+font-size: 8px;
+margin-left: 4px;
+}
+.stat-card .help-btn {
+width: 14px;
+height: 14px;
+font-size: 8px;
+margin-left: 4px;
+}
+.mega-tab .help-btn {
+position: absolute;
+top: 14px;
+right: 14px;
+}
+.mega-tab.active .help-btn {
+right: 36px;
+}
+</style>
+
+</head>
+<body>
+
+<div class="container">
+  <header>
+    <div class="brand">
+      <h1>ticker//scan v3</h1>
+      <div class="sub">Dual-Horizon Intelligence · Short · Long</div>
+    </div>
+    <div class="status-bar">
+      <div class="status-item">
+        <div class="pulse" id="statusPulse"></div>
+        <span id="statusText">INITIALIZING</span>
+      </div>
+      <div class="status-item">LAST <strong id="lastScan">—</strong></div>
+      <div class="countdown">NEXT <span id="countdown">10:00</span></div>
+    </div>
+  </header>
+
+  <div class="mega-tabs">
+    <button class="mega-tab active" data-view="short">
+      <span class="tab-num">[01]</span>
+      Short-Term
+      <span class="tab-desc">Intraday · Velocity · Z-score · Momentum</span>
+      <button class="help-btn tab-help" data-help="tab-short" onclick="event.stopPropagation(); showHelp('tab-short')">?</button>
+    </button>
+    <button class="mega-tab" data-view="long">
+      <span class="tab-num">[02]</span>
+      Long-Term
+      <span class="tab-desc">DD · Persistence · Cross-sub conviction</span>
+      <button class="help-btn tab-help" data-help="tab-long" onclick="event.stopPropagation(); showHelp('tab-long')">?</button>
+    </button>
+  </div>
+
+  <div class="controls">
+    <div class="control-group" style="width: 100%;">
+      <label>Presets<button class="help-btn" onclick="showHelp('presets')">?</button></label>
+      <div class="preset-pills" id="presetPills"></div>
+    </div>
+    <div class="control-group">
+      <label>Subreddits<button class="help-btn" onclick="showHelp('subs')">?</button></label>
+      <div class="sub-pills" id="subPills"></div>
+    </div>
+    <div class="control-group">
+      <label>Actions</label>
+      <div style="display: flex; gap: 8px;">
+        <button class="btn" id="scanNowBtn">SCAN NOW</button>
+        <button class="btn secondary" id="clearHistoryBtn">CLEAR HIST</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============== SHORT-TERM VIEW ============== -->
+
+  <div class="view-section active" id="viewShort">
+    <div class="stats-row">
+      <div class="stat-card">
+        <div class="label">Posts<button class="help-btn" onclick="showHelp('stat-posts')">?</button></div>
+        <div class="value" id="statPosts">0</div>
+      </div>
+      <div class="stat-card">
+        <div class="label">Tickers<button class="help-btn" onclick="showHelp('stat-tickers')">?</button></div>
+        <div class="value" id="statTickers">0</div>
+      </div>
+      <div class="stat-card">
+        <div class="label">Hottest (Z)<button class="help-btn" onclick="showHelp('zscore')">?</button></div>
+        <div class="value" id="statHotZ">—</div>
+      </div>
+      <div class="stat-card">
+        <div class="label">Top Velocity<button class="help-btn" onclick="showHelp('velocity')">?</button></div>
+        <div class="value" id="statTopVelocity">—</div>
+      </div>
+      <div class="stat-card">
+        <div class="label">Bull<button class="help-btn" onclick="showHelp('sentiment')">?</button></div>
+        <div class="value" id="statBull">—</div>
+      </div>
+      <div class="stat-card">
+        <div class="label">Bear<button class="help-btn" onclick="showHelp('sentiment')">?</button></div>
+        <div class="value" id="statBear">—</div>
+      </div>
+    </div>
+
+```
+<div class="controls" style="margin-bottom: 16px;">
+  <div class="control-group">
+    <label>Sort<button class="help-btn" onclick="showHelp('sort-short')">?</button></label>
+    <div class="sub-pills" id="sortPillsShort"></div>
+  </div>
+</div>
+
+<div class="grid-layout">
+  <div class="panel">
+    <div class="panel-header">
+      <h2>► Short-Term Tickers<button class="help-btn" onclick="showHelp('panel-short-tickers')">?</button></h2>
+      <div class="count" id="tickerCountShort">0</div>
+    </div>
+    <div class="ticker-header-short">
+      <div>#</div>
+      <div>Symbol</div>
+      <div>60m Trend<button class="help-btn" onclick="showHelp('trend')">?</button></div>
+      <div>Price<button class="help-btn" onclick="showHelp('price')">?</button></div>
+      <div>Z-Score<button class="help-btn" onclick="showHelp('zscore')">?</button></div>
+      <div>Mentions<button class="help-btn" onclick="showHelp('mentions')">?</button></div>
+      <div>Sent<button class="help-btn" onclick="showHelp('sentiment')">?</button></div>
+    </div>
+    <div id="tickerListShort">
+      <div class="loading"><span class="scanline">▓▓▓ SCANNING ▓▓▓</span></div>
+    </div>
+  </div>
+
+  <div class="panel">
+    <div class="panel-header">
+      <h2>► Hot Posts<button class="help-btn" onclick="showHelp('panel-hot-posts')">?</button></h2>
+      <div class="count" id="postCount">0</div>
+    </div>
+    <div id="postList">
+      <div class="loading"><span class="scanline">▓▓▓ LOADING ▓▓▓</span></div>
+    </div>
+  </div>
+</div>
+```
+
+  </div>
+
+  <!-- ============== LONG-TERM VIEW ============== -->
+
+  <div class="view-section" id="viewLong">
+    <div class="stats-row">
+      <div class="stat-card">
+        <div class="label">DD Posts<button class="help-btn" onclick="showHelp('dd')">?</button></div>
+        <div class="value" id="statDDCount">0</div>
+      </div>
+      <div class="stat-card">
+        <div class="label">Top Quality<button class="help-btn" onclick="showHelp('quality')">?</button></div>
+        <div class="value" id="statTopQuality">—</div>
+      </div>
+      <div class="stat-card">
+        <div class="label">Most Persistent<button class="help-btn" onclick="showHelp('persistence')">?</button></div>
+        <div class="value" id="statPersistent">—</div>
+      </div>
+      <div class="stat-card">
+        <div class="label">Cross-Sub Consensus<button class="help-btn" onclick="showHelp('consensus')">?</button></div>
+        <div class="value" id="statConsensus">—</div>
+      </div>
+      <div class="stat-card">
+        <div class="label">Days of History<button class="help-btn" onclick="showHelp('history')">?</button></div>
+        <div class="value" id="statDays">0</div>
+      </div>
+      <div class="stat-card">
+        <div class="label">Quality Subs<button class="help-btn" onclick="showHelp('subweight')">?</button></div>
+        <div class="value" id="statQualitySubs">—</div>
+      </div>
+    </div>
+
+```
+<div class="controls" style="margin-bottom: 16px;">
+  <div class="control-group">
+    <label>Sort<button class="help-btn" onclick="showHelp('sort-long')">?</button></label>
+    <div class="sub-pills" id="sortPillsLong"></div>
+  </div>
+</div>
+
+<div class="grid-layout">
+  <div class="panel">
+    <div class="panel-header">
+      <h2>► Long-Term Tickers<button class="help-btn" onclick="showHelp('panel-long-tickers')">?</button></h2>
+      <div class="count" id="tickerCountLong">0</div>
+    </div>
+    <div class="ticker-header-long">
+      <div>#</div>
+      <div>Symbol</div>
+      <div>Tier · Subs<button class="help-btn" onclick="showHelp('tier')">?</button></div>
+      <div>Price<button class="help-btn" onclick="showHelp('price')">?</button></div>
+      <div>Quality<button class="help-btn" onclick="showHelp('quality')">?</button></div>
+      <div>Persist<button class="help-btn" onclick="showHelp('persistence')">?</button></div>
+      <div>Sent<button class="help-btn" onclick="showHelp('sentiment')">?</button></div>
+    </div>
+    <div id="tickerListLong">
+      <div class="loading"><span class="scanline">▓▓▓ ANALYZING DD ▓▓▓</span></div>
+    </div>
+  </div>
+
+  <div class="panel">
+    <div class="panel-header">
+      <h2>► DD &amp; Research<button class="help-btn" onclick="showHelp('panel-dd')">?</button></h2>
+      <div class="count" id="ddCount">0</div>
+    </div>
+    <div id="ddList">
+      <div class="loading"><span class="scanline">▓▓▓ FILTERING DD ▓▓▓</span></div>
+    </div>
+  </div>
+</div>
+```
+
+  </div>
+
+  <div class="footer-note">
+    Reddit JSON · Stooq prices · Sub-weighted scoring · Z-score baselines · DD detection · Not financial advice
+  </div>
+</div>
+
+<div class="modal-overlay" id="modalOverlay">
+  <div class="modal" id="modalContent"></div>
+</div>
+
+<!-- Help Modal -->
+
+<div class="help-modal-overlay" id="helpModalOverlay">
+  <div class="help-modal" id="helpModalContent"></div>
+</div>
+
+<script>
+// ============================================================
+// CONFIGURATION
+// ============================================================
+const SUBREDDITS = [
+  // Each sub has a "quality weight" — how much its mentions count toward long-term scores
+  // WSB chatter is loud but noisy. r/SecurityAnalysis is quiet but signal-heavy.
+  { id: 'wallstreetbets', label: 'WSB', active: true, weight: 0.5, tier: 'meme' },
+  { id: 'stocks', label: 'STOCKS', active: true, weight: 1.0, tier: 'momentum' },
+  { id: 'investing', label: 'INVESTING', active: true, weight: 1.5, tier: 'quality' },
+  { id: 'StockMarket', label: 'STOCKMARKET', active: false, weight: 0.8, tier: 'momentum' },
+  { id: 'options', label: 'OPTIONS', active: false, weight: 0.6, tier: 'meme' },
+  { id: 'pennystocks', label: 'PENNY', active: false, weight: 0.3, tier: 'meme' },
+  { id: 'SecurityAnalysis', label: 'SECANALYSIS', active: true, weight: 2.0, tier: 'research' },
+  { id: 'ValueInvesting', label: 'VALUE', active: true, weight: 2.0, tier: 'research' },
+  { id: 'dividends', label: 'DIVIDENDS', active: false, weight: 1.5, tier: 'quality' },
+];
+
+// Presets auto-select a curated set of subreddits tuned for a trading style.
+// Each preset's `subs` is the exact set to enable when the preset is clicked.
+const PRESETS = [
+  {
+    id: 'day',
+    icon: '[01]',
+    name: 'Day Trading',
+    desc: 'Volume over quality · WSB + options',
+    subs: ['wallstreetbets', 'options', 'pennystocks'],
+    recommendedView: 'short',
+    recommendedSort: 'velocity',
+  },
+  {
+    id: 'swing',
+    icon: '[02]',
+    name: 'Swing Trading',
+    desc: 'Balanced · WSB + stocks + investing',
+    subs: ['wallstreetbets', 'stocks', 'investing'],
+    recommendedView: 'short',
+    recommendedSort: 'zscore',
+  },
+  {
+    id: 'position',
+    icon: '[03]',
+    name: 'Position Trading',
+    desc: 'Signal over volume · research subs',
+    subs: ['investing', 'SecurityAnalysis', 'ValueInvesting', 'dividends'],
+    recommendedView: 'long',
+    recommendedSort: 'quality',
+  },
+  {
+    id: 'full',
+    icon: '[04]',
+    name: 'Full Picture',
+    desc: 'All subs · slower scans, broader data',
+    subs: ['wallstreetbets', 'stocks', 'investing', 'StockMarket', 'options', 'pennystocks', 'SecurityAnalysis', 'ValueInvesting', 'dividends'],
+    recommendedView: 'short',
+    recommendedSort: 'mentions',
+  },
+];
+
+const SORT_OPTIONS_SHORT = [
+  { id: 'mentions', label: 'MENTIONS' },
+  { id: 'velocity', label: 'VELOCITY' },
+  { id: 'zscore', label: 'Z-SCORE' },
+  { id: 'bullish', label: 'BULLISH' },
+  { id: 'bearish', label: 'BEARISH' },
+];
+const SORT_OPTIONS_LONG = [
+  { id: 'quality', label: 'QUALITY' },
+  { id: 'persistence', label: 'PERSISTENCE' },
+  { id: 'consensus', label: 'CONSENSUS' },
+  { id: 'weighted', label: 'WEIGHTED' },
+];
+
+const STOPWORDS = new Set([
+  'A','I','AN','AS','AT','BE','BY','DO','GO','IF','IN','IS','IT','MY','NO','OF','ON','OR','SO','TO','UP','US','WE',
+  'ALL','AND','ANY','ARE','BIG','BOT','BUY','CAN','DAY','DD','DID','EOD','FOR','GET','GOT','HAS','HIM','HOW','ITM',
+  'LMK','LOL','LOW','MAY','NEW','NOT','NOW','OK','OLD','OOM','OTM','OUR','OUT','OWN','PER','PUT','SEE','SHE','TBH',
+  'THE','TIL','TOP','TWO','USA','WAS','WAY','WHO','WHY','YES','YET','YOU','ATH','ATL','AVG','BTW','ETF','FAQ',
+  'GDP','IPO','IRA','LLC','MOD','NFL','NBA','NHL','OMG','OPS','PMI','PT','PTS','RIP','SUS','TBA','TLDR','URL',
+  'WTF','YOLO','YTD','MAGA','FOMO','HODL','LMAO','ROFL','IMHO','IMO','AKA','APR','CEO','CFO','COO','CTO','CPA','CPI',
+  'CRM','DRS','ESG','EPS','FAANG','FBI','FDA','FOMC','FUD','GLHF','HVAC','IRL','IRS','KPI','NASA','OEM',
+  'OPEC','PE','PEG','PR','PSA','PTO','PVP','QED','REIT','RKO','ROI','RPM','RTX','SNL','SQL',
+  'SSL','STFU','TIA','UFO','VPN','VS','WEF','WSB','YMMV','MVP','ATM','PM','AM','EU','UK','UN',
+  'TV','PC','AI','VR','AR','RV','EV','GG','DM','OG','EH','ID','AD','TY','UR','OP','LP','HP','HR','HQ',
+  'CC','BS','BC','CD','PF','PH','RH','SS','ST','TD','TN','TX','VA','WA','WV','WY','LOSS','GAIN','HOLD','SELL',
+  'CALL','CALLS','PUTS','LONG','SHORT','BULL','BEAR','MOON','DUMP','PUMP','BAGS','TENDIES','APE','APES','RETARD','SMOOTH',
+  'BRAIN','DIAMOND','HANDS','PAPER','ROCKET','GUH','LFG','EDIT','UPDATE','OPEN','CLOSE','HIGH','BID','ASK',
+  'EOY','EOM','OHCO','POST','THREAD','MEME','NEWS','READ','REAL','TRUE','FAKE','NICE','GOOD','BAD','HUGE','BACK','NEXT',
+  'WEEK','YEAR','MONTH','DAYS','TIME','LIKE','JUST','MAKE','GIVE','GREAT','BEST','WORST','FREE','SAFE','RISK',
+  'MUCH','MORE','LESS','LOTS','MANY','SOME','FEW','EACH','EVERY','THIS','THAT','HERE','OVER','UNDER','ABOVE','BELOW',
+  'EARN','LOSE','MADE','LOST','SOLD','BOUGHT','HELD','EVEN','SAME','NONE','LOLL','HAHA','BUTT','CASH','DEBT',
+  'BANK','LOAN','FUND','RATE','GAINS','LOSSES','PEAK','PEAKS','FLAT','FLOOR','TOPS','MEGA','TINY','RIGHT',
+  'WRONG','SURE','OKAY','YEAH','NOPE','LULZ','BRUH','BROO','DUDE','GUYS','PEOPLE','ANYONE','SOMEONE','THINK','KNOW',
+  'WANT','NEED','SHOULD','WOULD','COULD','MIGHT','MUST','SHALL','WILL','GONNA','WANNA','GOTTA','HAVE','HAD','GETS',
+  'GETTING','PUTTING','CALLING','OPENING','CLOSING','BUYING','SELLING','HOLDING','TRADING','INVESTING','EARNINGS','REPORT',
+  'WEEKLY','MONTHLY','DAILY','ALERT','WARNING','MARKET','MARKETS','STOCK','STOCKS','SHARE','SHARES','PRICE',
+  'PRICES','TRADE','TRADES','RALLY','CRASH','TREND','TRENDS','CHART','CHARTS','SETUP','SETUPS','PLAY',
+  'PLAYS','SQUEEZE','LONGS','SHORTS','OPTION','EXPIRY','STRIKE','PREMIUM','THETA','DELTA','GAMMA',
+  'VEGA','RHO','IV','HV','OI','VOL','VWAP','MACD','SMA','EMA','BB','RSI','ADX','OBV','MFI','FED','POW','POWELL',
+  'JEROME','BIDEN','TRUMP','HARRIS','VANCE','MUSK','ELON','BEZOS','GATES','BUFFETT','CRAMER','BURRY','WOOD','CATHIE',
+  'MICHAEL','WARREN','BILL','JEFF','TIM','SUNDAR','SATYA','JENSEN','LISA','SAM','OPENAI','ANTHROPIC','REDDIT','TWITTER',
+  'YOUTUBE','GOOGLE','FACEBOOK','INSTAGRAM','TIKTOK','DISCORD','TELEGRAM','WHATSAPP','SIGNAL','EOQ','BTC','ETH',
+  'ASAP','BOGO','DIY','ETA','FYI','GOAT','ICYMI','MIA','RSVP','SOS','TBD','VIP','HF','MM','HFT','PFOF','SI','FTD',
+  'CC','DCA','EOY','FA','TA','PT','SL','BE','TP','MOO','MOC','LOC','LOO','RH','TR','MS','GS','JPM','BAC','WFC','C'
+]);
+
+const BULLISH_WORDS = {
+  'moon':3,'mooning':3,'rocket':3,'rockets':3,'ripping':3,'squeeze':3,'squeezing':3,'gamma':2,'tendies':2,
+  'bullish':4,'bull':2,'bulls':2,'longs':1,'calls':2,'buying':2,'bought':1,'pump':2,'pumping':2,'pumped':2,
+  'rally':3,'rallying':3,'breakout':3,'green':1,'gains':2,'gain':1,'profit':2,'profits':2,'winner':2,
+  'winning':2,'higher':2,'beast':2,'undervalued':3,'cheap':2,'load':2,'loading':2,'loaded':2,'btfd':4,
+  'diamond':2,'hodl':2,'strong':2,'crushing':3,'killing':2,'beats':2,'beating':2,'surge':3,'surging':3,
+  'soar':3,'soaring':3,'popping':2,'explode':3,'exploding':3,'explosive':3,'fire':2,'massive':2,
+  'incredible':2,'amazing':2,'awesome':2,'oversold':3,'bottom':2,'reversal':2,'recovery':2,'rebound':2,
+  'climbing':2,'rising':2,'gap up':3,'gapping':2,
+};
+const BEARISH_WORDS = {
+  'crash':4,'crashing':4,'crashed':3,'dump':3,'dumping':3,'dumped':3,'bearish':4,'bear':2,'bears':2,
+  'shorts':2,'shorting':2,'puts':2,'selling':2,'red':1,'losing':2,'lower':2,'drop':2,'dropping':2,
+  'dropped':2,'falling':2,'fell':2,'tank':3,'tanking':3,'tanked':3,'plunge':3,'plunging':3,'crater':3,
+  'cratering':3,'collapse':4,'collapsing':4,'collapsed':3,'dead':2,'dying':2,'overvalued':3,'bubble':3,
+  'expensive':2,'panic':3,'panicking':3,'rug':3,'rugged':3,'rugpull':4,'scam':3,'fraud':3,'avoid':2,
+  'trash':2,'garbage':2,'worthless':3,'bagholder':3,'bagholders':3,'wreck':3,'wrecked':3,'destroyed':3,
+  'bloodbath':4,'massacre':3,'slaughter':3,'gap down':3,'breakdown':3,'capitulate':3,'capitulation':4,
+  'puke':3,'puking':3,'awful':2,'terrible':2,'horrible':2,'disaster':3,'doomed':3,'failing':2,'failed':2,
+  'failure':2,'missed':2,'weak':2,'weakness':2,
+};
+
+// ============================================================
+// STATE
+// ============================================================
+const STATE = {
+  selectedSubs: new Set(SUBREDDITS.filter(s => s.active).map(s => s.id)),
+  activePreset: null,
+  currentView: 'short',
+  sortShort: 'mentions',
+  sortLong: 'quality',
+  posts: [],
+  ddPosts: [],
+  tickers: new Map(),
+  previousRanks: new Map(),
+  lastScanTime: null,
+  refreshInterval: null,
+  countdownInterval: null,
+  nextScanAt: null,
+  scanning: false,
+  history: [],
+  priceCache: new Map(),
+  tickerBaselines: new Map(), // long-term baselines for z-score
+  tickerFirstSeen: new Map(), // for persistence tracking
+};
+
+const SCAN_INTERVAL_MS = 10 * 60 * 1000;
+const HISTORY_KEY = 'tickerscan_history_v3';
+const BASELINE_KEY = 'tickerscan_baselines_v3';
+const FIRSTSEEN_KEY = 'tickerscan_firstseen_v3';
+const MAX_HISTORY = 144;
+const PRICE_CACHE_MS = 5 * 60 * 1000;
+
+// ============================================================
+// PERSISTENCE
+// ============================================================
+function loadState() {
+  try {
+    const hist = localStorage.getItem(HISTORY_KEY);
+    if (hist) STATE.history = JSON.parse(hist);
+    const base = localStorage.getItem(BASELINE_KEY);
+    if (base) STATE.tickerBaselines = new Map(JSON.parse(base));
+    const fs = localStorage.getItem(FIRSTSEEN_KEY);
+    if (fs) STATE.tickerFirstSeen = new Map(JSON.parse(fs));
+  } catch (e) {}
+}
+function saveState() {
+  try {
+    if (STATE.history.length > MAX_HISTORY) STATE.history = STATE.history.slice(-MAX_HISTORY);
+    localStorage.setItem(HISTORY_KEY, JSON.stringify(STATE.history));
+    localStorage.setItem(BASELINE_KEY, JSON.stringify([...STATE.tickerBaselines]));
+    localStorage.setItem(FIRSTSEEN_KEY, JSON.stringify([...STATE.tickerFirstSeen]));
+  } catch (e) {}
+}
+
+// ============================================================
+// REDDIT FETCH
+// ============================================================
+async function fetchSubreddit(sub) {
+  const url = `https://www.reddit.com/r/${sub}/hot.json?limit=50&raw_json=1`;
+  try {
+    const res = await fetch(url);
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const data = await res.json();
+    return data.data.children.map(c => ({
+      id: c.data.id,
+      title: c.data.title,
+      selftext: c.data.selftext || '',
+      score: c.data.score,
+      upvote_ratio: c.data.upvote_ratio || 0,
+      num_comments: c.data.num_comments,
+      created: c.data.created_utc,
+      subreddit: c.data.subreddit,
+      link_flair_text: (c.data.link_flair_text || '').toLowerCase(),
+      permalink: `https://reddit.com${c.data.permalink}`,
+    }));
+  } catch (err) {
+    console.error(`Failed to fetch r/${sub}:`, err);
+    return null;
+  }
+}
+
+// ============================================================
+// SENTIMENT
+// ============================================================
+function scoreSentiment(text) {
+  const lower = text.toLowerCase();
+  let bull = 0, bear = 0;
+  for (const [word, weight] of Object.entries(BULLISH_WORDS)) {
+    const re = new RegExp(`\\b${word.replace(/[-/\\^$*+?.()|[\]{}]/g, '\\$&')}\\b`, 'g');
+    const matches = lower.match(re);
+    if (matches) bull += matches.length * weight;
+  }
+  for (const [word, weight] of Object.entries(BEARISH_WORDS)) {
+    const re = new RegExp(`\\b${word.replace(/[-/\\^$*+?.()|[\]{}]/g, '\\$&')}\\b`, 'g');
+    const matches = lower.match(re);
+    if (matches) bear += matches.length * weight;
+  }
+  return { bull, bear, net: bull - bear };
+}
+
+function extractTickers(text) {
+  const found = new Map();
+  if (!text) return found;
+  const dollarRegex = /\$([A-Z]{1,5})\b/g;
+  const bareRegex = /\b([A-Z]{2,5})\b/g;
+  let m;
+  while ((m = dollarRegex.exec(text)) !== null) {
+    const sym = m[1];
+    if (!STOPWORDS.has(sym)) found.set(sym, (found.get(sym) || 0) + 2);
+  }
+  while ((m = bareRegex.exec(text)) !== null) {
+    const sym = m[1];
+    if (!STOPWORDS.has(sym) && sym.length >= 2) found.set(sym, (found.get(sym) || 0) + 1);
+  }
+  return found;
+}
+
+// ============================================================
+// DD DETECTION
+// A post is "DD" if it meets several quality signals:
+// - Long body text (>1500 chars = real writing, not a meme)
+// - Tagged as "DD", "Discussion", "Analysis", or "Catalyst"
+// - High upvote ratio (>0.85 = community thinks it's substantive)
+// - Decent score (>50)
+// Returns a 0-100 quality score
+// ============================================================
+function calculateDDScore(post) {
+  let score = 0;
+  const len = post.selftext.length;
+
+  // Length signal: real DD is long
+  if (len > 5000) score += 40;
+  else if (len > 2500) score += 25;
+  else if (len > 1500) score += 15;
+  else if (len > 800) score += 5;
+
+  // Flair signal: explicit DD tagging
+  const flair = post.link_flair_text;
+  if (/\bdd\b|due dilig/.test(flair)) score += 25;
+  else if (/discuss|analysis|catalyst|valuation|thesis/.test(flair)) score += 20;
+  else if (/news|technical/.test(flair)) score += 5;
+
+  // Upvote ratio: community endorsement of quality
+  if (post.upvote_ratio > 0.92) score += 15;
+  else if (post.upvote_ratio > 0.85) score += 10;
+  else if (post.upvote_ratio > 0.75) score += 5;
+
+  // Comment-to-score ratio (discussion vs drive-by upvote)
+  if (post.score > 0 && post.num_comments / post.score > 0.5) score += 10;
+  if (post.num_comments > 100) score += 10;
+  else if (post.num_comments > 30) score += 5;
+
+  // Sub quality bonus
+  const subInfo = SUBREDDITS.find(s => s.id === post.subreddit);
+  if (subInfo) {
+    if (subInfo.tier === 'research') score += 15;
+    else if (subInfo.tier === 'quality') score += 8;
+  }
+
+  return Math.min(100, score);
+}
+
+// ============================================================
+// METRICS
+// ============================================================
+function getSentimentScore(t) {
+  const total = t.bull + t.bear;
+  if (total === 0) return 0;
+  return ((t.bull - t.bear) / total) * 100;
+}
+
+function getMentionHistory(symbol, lookback = 6) {
+  if (STATE.history.length < 2) return [];
+  return STATE.history.slice(-lookback).map(snap => snap.tickers[symbol]?.mentions || 0);
+}
+
+function getVelocity(symbol) {
+  const h = getMentionHistory(symbol, 6);
+  if (h.length < 3) return 0;
+  const recent = h.slice(-2).reduce((s, x) => s + x, 0) / 2;
+  const older = h.slice(0, -2).reduce((s, x) => s + x, 0) / Math.max(1, h.length - 2);
+  return recent - older;
+}
+
+function getZScore(symbol, currentMentions) {
+  // Z-score based on long-running baseline. Updated each scan.
+  const baseline = STATE.tickerBaselines.get(symbol);
+  if (!baseline || baseline.samples < 6) return null; // need at least 6 samples to mean anything
+  const z = (currentMentions - baseline.mean) / (baseline.stddev || 1);
+  return z;
+}
+
+function updateBaseline(symbol, currentMentions) {
+  // Running mean/stddev. Welford's online algorithm.
+  let b = STATE.tickerBaselines.get(symbol);
+  if (!b) b = { samples: 0, mean: 0, m2: 0, stddev: 0 };
+  b.samples += 1;
+  const delta = currentMentions - b.mean;
+  b.mean += delta / b.samples;
+  const delta2 = currentMentions - b.mean;
+  b.m2 += delta * delta2;
+  if (b.samples > 1) b.stddev = Math.sqrt(b.m2 / (b.samples - 1));
+  STATE.tickerBaselines.set(symbol, b);
+}
+
+function getPersistence(symbol) {
+  // How many distinct scans (since first seen) has this ticker appeared in?
+  // Capped at total history length. Returns approximate "days" assuming 10-min scans.
+  const fs = STATE.tickerFirstSeen.get(symbol);
+  if (!fs) return { scans: 1, days: 0 };
+  let scansWithMentions = 0;
+  for (const snap of STATE.history) {
+    if (snap.ts >= fs.firstTs && (snap.tickers[symbol]?.mentions || 0) > 0) {
+      scansWithMentions += 1;
+    }
+  }
+  const spanMs = Date.now() - fs.firstTs;
+  const days = spanMs / (24 * 60 * 60 * 1000);
+  return { scans: scansWithMentions, days };
+}
+
+function getSubBreakdown(symbol) {
+  // How is this ticker distributed across subs?
+  const breakdown = {};
+  for (const post of STATE.posts) {
+    if (post.tickers?.includes(symbol)) {
+      breakdown[post.subreddit] = (breakdown[post.subreddit] || 0) + 1;
+    }
+  }
+  return breakdown;
+}
+
+function getWeightedScore(symbol) {
+  // Sub-weighted mention score. Mention in r/SecurityAnalysis = 2.0x.
+  // Mention in r/wallstreetbets = 0.5x.
+  const breakdown = getSubBreakdown(symbol);
+  let score = 0;
+  for (const [sub, count] of Object.entries(breakdown)) {
+    const subInfo = SUBREDDITS.find(s => s.id === sub);
+    score += count * (subInfo?.weight || 1.0);
+  }
+  return score;
+}
+
+function getQualityScore(t) {
+  // Quality = avg DD score of posts mentioning this ticker × sub-weight factor
+  let ddSum = 0, ddCount = 0;
+  for (const post of STATE.posts) {
+    if (post.tickers?.includes(t.symbol)) {
+      ddSum += post.ddScore || 0;
+      ddCount += 1;
+    }
+  }
+  const avgDD = ddCount > 0 ? ddSum / ddCount : 0;
+  const weighted = getWeightedScore(t.symbol);
+  // Combine: avg DD quality (0-100) plus a small weighted-mention bonus
+  return Math.min(100, avgDD + Math.min(20, weighted));
+}
+
+function getConsensus(symbol) {
+  // How many DIFFERENT subs are talking about this ticker? Higher = broader signal.
+  const breakdown = getSubBreakdown(symbol);
+  return Object.keys(breakdown).length;
+}
+
+function getTier(symbol) {
+  // Auto-classify: based on dominant sub tier
+  const breakdown = getSubBreakdown(symbol);
+  const tierCounts = { meme: 0, momentum: 0, quality: 0, research: 0 };
+  for (const [sub, count] of Object.entries(breakdown)) {
+    const subInfo = SUBREDDITS.find(s => s.id === sub);
+    if (subInfo) tierCounts[subInfo.tier] = (tierCounts[subInfo.tier] || 0) + count;
+  }
+  let max = 0, dominant = 'momentum';
+  for (const [tier, count] of Object.entries(tierCounts)) {
+    if (count > max) { max = count; dominant = tier; }
+  }
+  return dominant;
+}
+
+// ============================================================
+// PRICE (Stooq)
+// ============================================================
+async function fetchPrice(symbol) {
+  const cached = STATE.priceCache.get(symbol);
+  if (cached && Date.now() - cached.fetched < PRICE_CACHE_MS) return cached;
+  try {
+    const url = `https://stooq.com/q/l/?s=${symbol.toLowerCase()}.us&f=sd2t2ohlcv&h&e=csv`;
+    const res = await fetch(url);
+    if (!res.ok) throw new Error();
+    const csv = await res.text();
+    const lines = csv.trim().split('\n');
+    if (lines.length < 2) return null;
+    const cols = lines[1].split(',');
+    const open = parseFloat(cols[3]);
+    const close = parseFloat(cols[6]);
+    if (isNaN(close) || isNaN(open) || close === 0) {
+      STATE.priceCache.set(symbol, { fetched: Date.now(), failed: true });
+      return null;
+    }
+    const change = close - open;
+    const changePct = (change / open) * 100;
+    const result = { price: close, open, change, changePct, fetched: Date.now() };
+    STATE.priceCache.set(symbol, result);
+    return result;
+  } catch (err) {
+    STATE.priceCache.set(symbol, { fetched: Date.now(), failed: true });
+    return null;
+  }
+}
+
+// ============================================================
+// MAIN SCAN
+// ============================================================
+async function performScan() {
+  if (STATE.scanning) return;
+  STATE.scanning = true;
+  setStatus('scanning', 'SCANNING');
+
+  STATE.previousRanks.clear();
+  const sortedPrev = [...STATE.tickers.entries()].sort((a, b) => b[1].mentions - a[1].mentions);
+  sortedPrev.forEach(([sym], idx) => STATE.previousRanks.set(sym, idx));
+
+  const allPosts = [];
+  let anySuccess = false;
+
+  for (const sub of STATE.selectedSubs) {
+    const posts = await fetchSubreddit(sub);
+    if (posts) { allPosts.push(...posts); anySuccess = true; }
+  }
+
+  if (!anySuccess) {
+    setStatus('error', 'FETCH FAILED');
+    document.getElementById('tickerListShort').innerHTML =
+      '<div class="error">// REDDIT FETCH BLOCKED //<br><br>Try opening this file directly in your browser (file://), or disable extensions blocking reddit.com</div>';
+    STATE.scanning = false;
+    return;
+  }
+
+  const tickerMap = new Map();
+  const nowTs = Date.now();
+
+  for (const post of allPosts) {
+    const text = post.title + ' ' + post.selftext;
+    const found = extractTickers(text);
+    const postSentiment = scoreSentiment(text);
+    post.tickers = [...found.keys()];
+    post.sentiment = postSentiment;
+    post.ddScore = calculateDDScore(post);
+
+    for (const [sym, weight] of found) {
+      if (!tickerMap.has(sym)) {
+        tickerMap.set(sym, {
+          symbol: sym, mentions: 0, weighted: 0, posts: new Set(),
+          score: 0, bull: 0, bear: 0
+        });
+      }
+      const t = tickerMap.get(sym);
+      t.mentions += 1;
+      t.weighted += weight;
+      t.posts.add(post.id);
+      t.score += post.score;
+      t.bull += postSentiment.bull;
+      t.bear += postSentiment.bear;
+
+      // First-seen tracking
+      if (!STATE.tickerFirstSeen.has(sym)) {
+        STATE.tickerFirstSeen.set(sym, { firstTs: nowTs });
+      }
+    }
+  }
+
+  STATE.posts = allPosts.sort((a, b) => b.created - a.created);
+  STATE.tickers = tickerMap;
+  STATE.lastScanTime = new Date();
+
+  // DD posts: filter posts with high DD score, sort by score
+  STATE.ddPosts = allPosts
+    .filter(p => p.ddScore >= 35 && p.tickers && p.tickers.length > 0)
+    .sort((a, b) => b.ddScore - a.ddScore);
+
+  // Update baselines and snapshot
+  const snapshot = { ts: nowTs, tickers: {} };
+  for (const [sym, t] of tickerMap) {
+    snapshot.tickers[sym] = { mentions: t.mentions, bull: t.bull, bear: t.bear };
+    updateBaseline(sym, t.mentions);
+  }
+  STATE.history.push(snapshot);
+  saveState();
+
+  // Top tickers for price fetch
+  const topTickers = [...tickerMap.values()]
+    .sort((a, b) => b.weighted - a.weighted)
+    .slice(0, 20);
+
+  render();
+  setStatus('live', 'LIVE');
+  STATE.scanning = false;
+  STATE.nextScanAt = Date.now() + SCAN_INTERVAL_MS;
+
+  Promise.all(topTickers.map(t => fetchPrice(t.symbol))).then(() => render());
+}
+
+// ============================================================
+// RENDERING
+// ============================================================
+function render() {
+  renderShortStats();
+  renderLongStats();
+  renderTickersShort();
+  renderTickersLong();
+  renderPosts();
+  renderDDPosts();
+  document.getElementById('lastScan').textContent = formatTime(STATE.lastScanTime);
+}
+
+function renderShortStats() {
+  const arr = [...STATE.tickers.values()];
+  document.getElementById('statPosts').textContent = STATE.posts.length;
+  document.getElementById('statTickers').textContent = arr.length;
+
+  // Hottest by z-score
+  let topZ = null, topZSym = '—';
+  for (const t of arr) {
+    if (t.mentions < 2) continue;
+    const z = getZScore(t.symbol, t.mentions);
+    if (z !== null && (topZ === null || z > topZ)) { topZ = z; topZSym = t.symbol; }
+  }
+  document.getElementById('statHotZ').textContent = topZ !== null ? `$${topZSym} (${topZ.toFixed(1)})` : '—';
+
+  // Top velocity
+  let topV = null, topVSym = '—';
+  for (const t of arr) {
+    const v = getVelocity(t.symbol);
+    if (topV === null || v > topV) { topV = v; topVSym = t.symbol; }
+  }
+  document.getElementById('statTopVelocity').textContent = topV !== null && topV > 0 ? `$${topVSym}` : '—';
+
+  const qualified = arr.filter(t => t.mentions >= 3);
+  const bullSort = [...qualified].sort((a, b) => getSentimentScore(b) - getSentimentScore(a));
+  const bearSort = [...qualified].sort((a, b) => getSentimentScore(a) - getSentimentScore(b));
+  document.getElementById('statBull').textContent = bullSort[0] ? `$${bullSort[0].symbol}` : '—';
+  document.getElementById('statBear').textContent =
+    bearSort[0] && getSentimentScore(bearSort[0]) < 0 ? `$${bearSort[0].symbol}` : '—';
+}
+
+function renderLongStats() {
+  document.getElementById('statDDCount').textContent = STATE.ddPosts.length;
+
+  const arr = [...STATE.tickers.values()];
+
+  // Top quality
+  let topQ = -1, topQSym = '—';
+  for (const t of arr) {
+    if (t.mentions < 2) continue;
+    const q = getQualityScore(t);
+    if (q > topQ) { topQ = q; topQSym = t.symbol; }
+  }
+  document.getElementById('statTopQuality').textContent = topQ > 20 ? `$${topQSym}` : '—';
+
+  // Most persistent
+  let topP = -1, topPSym = '—';
+  for (const t of arr) {
+    const p = getPersistence(t.symbol);
+    if (p.scans > topP) { topP = p.scans; topPSym = t.symbol; }
+  }
+  document.getElementById('statPersistent').textContent = topP > 2 ? `$${topPSym}` : '—';
+
+  // Cross-sub consensus
+  let topC = -1, topCSym = '—';
+  for (const t of arr) {
+    const c = getConsensus(t.symbol);
+    if (c > topC) { topC = c; topCSym = t.symbol; }
+  }
+  document.getElementById('statConsensus').textContent = topC >= 2 ? `$${topCSym} (${topC})` : '—';
+
+  // Days of history
+  if (STATE.history.length > 1) {
+    const span = (STATE.history[STATE.history.length - 1].ts - STATE.history[0].ts) / (1000 * 60 * 60 * 24);
+    document.getElementById('statDays').textContent = span.toFixed(1);
+  } else {
+    document.getElementById('statDays').textContent = '0';
+  }
+
+  // Quality subs active
+  const activeQualitySubs = [...STATE.selectedSubs]
+    .map(id => SUBREDDITS.find(s => s.id === id))
+    .filter(s => s && (s.tier === 'research' || s.tier === 'quality'));
+  document.getElementById('statQualitySubs').textContent = activeQualitySubs.length;
+}
+
+function getSortedShort() {
+  const arr = [...STATE.tickers.values()];
+  switch (STATE.sortShort) {
+    case 'velocity':
+      return arr.map(t => { t._v = getVelocity(t.symbol); return t; })
+        .sort((a, b) => b._v - a._v);
+    case 'zscore':
+      return arr.map(t => { t._z = getZScore(t.symbol, t.mentions) || -Infinity; return t; })
+        .sort((a, b) => b._z - a._z);
+    case 'bullish':
+      return arr.filter(t => t.mentions >= 2).sort((a, b) => getSentimentScore(b) - getSentimentScore(a));
+    case 'bearish':
+      return arr.filter(t => t.mentions >= 2).sort((a, b) => getSentimentScore(a) - getSentimentScore(b));
+    default:
+      return arr.sort((a, b) => b.weighted - a.weighted);
+  }
+}
+
+function getSortedLong() {
+  const arr = [...STATE.tickers.values()];
+  switch (STATE.sortLong) {
+    case 'persistence':
+      return arr.map(t => { t._p = getPersistence(t.symbol).scans; return t; })
+        .sort((a, b) => b._p - a._p);
+    case 'consensus':
+      return arr.map(t => { t._c = getConsensus(t.symbol); return t; })
+        .sort((a, b) => b._c - a._c);
+    case 'weighted':
+      return arr.map(t => { t._w = getWeightedScore(t.symbol); return t; })
+        .sort((a, b) => b._w - a._w);
+    default: // quality
+      return arr.map(t => { t._q = getQualityScore(t); return t; })
+        .sort((a, b) => b._q - a._q);
+  }
+}
+
+function renderSparkline(symbol) {
+  const data = getMentionHistory(symbol, 6);
+  if (data.length < 2) {
+    return `<svg class="sparkline" viewBox="0 0 100 28" preserveAspectRatio="none">
+      <text x="50" y="18" text-anchor="middle" fill="#6b7a6b" font-size="9" font-family="JetBrains Mono">—</text>
+    </svg>`;
+  }
+  const max = Math.max(...data, 1);
+  const min = Math.min(...data);
+  const range = max - min || 1;
+  const w = 100, h = 28;
+  const step = w / (data.length - 1);
+  const points = data.map((v, i) => {
+    const x = i * step;
+    const y = h - 4 - ((v - min) / range) * (h - 8);
+    return `${x},${y}`;
+  }).join(' ');
+  const last = data[data.length - 1];
+  const prev = data[data.length - 2];
+  const color = last > prev ? 'var(--green)' : last < prev ? 'var(--red)' : 'var(--text-dim)';
+  return `<svg class="sparkline" viewBox="0 0 ${w} ${h}" preserveAspectRatio="none">
+    <polyline points="${points}" fill="none" stroke="${color}" stroke-width="1.5"/>
+    <circle cx="${(data.length - 1) * step}" cy="${h - 4 - ((last - min) / range) * (h - 8)}" r="2" fill="${color}"/>
+  </svg>`;
+}
+
+function renderTickersShort() {
+  const list = document.getElementById('tickerListShort');
+  const sorted = getSortedShort().slice(0, 30);
+
+  if (sorted.length === 0) {
+    list.innerHTML = '<div class="empty">// NO TICKERS DETECTED //</div>';
+    document.getElementById('tickerCountShort').textContent = '0';
+    return;
+  }
+
+  list.innerHTML = sorted.map((t, idx) => {
+    const prevRank = STATE.previousRanks.get(t.symbol);
+    let delta = '', deltaClass = '';
+    if (prevRank !== undefined) {
+      const diff = prevRank - idx;
+      if (diff > 0) { delta = `▲${diff}`; deltaClass = 'up'; }
+      else if (diff < 0) { delta = `▼${Math.abs(diff)}`; deltaClass = 'down'; }
+    } else if (STATE.previousRanks.size > 0) {
+      delta = 'NEW'; deltaClass = 'up';
+    }
+
+    const sent = getSentimentScore(t);
+    const sentClass = sent > 15 ? 'bull' : sent < -15 ? 'bear' : 'neutral';
+    const sentLabel = sent > 15 ? '+' + Math.round(sent) : sent < -15 ? Math.round(sent) : '0';
+    const sentBarWidth = Math.min(50, Math.abs(sent) / 2);
+
+    const z = getZScore(t.symbol, t.mentions);
+    let zHtml = '<div class="zscore flat">—</div>';
+    if (z !== null) {
+      const zClass = z > 2 ? 'hot' : z > 1 ? 'warm' : 'flat';
+      zHtml = `<div class="zscore ${zClass}">${z > 0 ? '+' : ''}${z.toFixed(1)}σ</div>`;
+    }
+
+    const price = STATE.priceCache.get(t.symbol);
+    let priceHtml = '<div class="price-na">—</div>';
+    if (price && !price.failed && price.price) {
+      const chClass = price.changePct > 0.05 ? 'up' : price.changePct < -0.05 ? 'down' : 'flat';
+      const arrow = price.changePct > 0 ? '▲' : price.changePct < 0 ? '▼' : '─';
+      priceHtml = `
+        <div class="price">$${price.price.toFixed(2)}</div>
+        <div class="price-change ${chClass}">${arrow} ${price.changePct.toFixed(2)}%</div>
+      `;
+    } else if (price && price.failed) {
+      priceHtml = '<div class="price-na">N/A</div>';
+    }
+
+    return `
+      <div class="ticker-row-short" onclick="showTickerDetail('${t.symbol}')">
+        <div class="rank">#${String(idx + 1).padStart(2, '0')}</div>
+        <div class="ticker-info">
+          <div class="ticker-symbol">$${t.symbol}</div>
+          <div class="ticker-meta">${t.posts.size}P · ${(t.score / 1000).toFixed(1)}k</div>
+          ${delta ? `<div class="delta ${deltaClass}">${delta}</div>` : ''}
+        </div>
+        <div>${renderSparkline(t.symbol)}</div>
+        <div class="price-cell">${priceHtml}</div>
+        ${zHtml}
+        <div class="mentions-cell">${t.mentions}</div>
+        <div class="sentiment-cell">
+          <div class="sentiment-score ${sentClass}">${sentLabel}</div>
+          <div class="sentiment-bar-mini">
+            <div class="sentiment-fill-mini ${sentClass}" style="width: ${sentBarWidth}px;"></div>
+          </div>
+        </div>
+      </div>
+    `;
+  }).join('');
+
+  document.getElementById('tickerCountShort').textContent = `${sorted.length}`;
+}
+
+function renderTickersLong() {
+  const list = document.getElementById('tickerListLong');
+  const sorted = getSortedLong().filter(t => t.mentions >= 1).slice(0, 30);
+
+  if (sorted.length === 0) {
+    list.innerHTML = '<div class="empty">// NO TICKERS DETECTED //</div>';
+    document.getElementById('tickerCountLong').textContent = '0';
+    return;
+  }
+
+  list.innerHTML = sorted.map((t, idx) => {
+    const tier = getTier(t.symbol);
+    const consensus = getConsensus(t.symbol);
+    const quality = getQualityScore(t);
+    const persist = getPersistence(t.symbol);
+    const sent = getSentimentScore(t);
+    const sentClass = sent > 15 ? 'bull' : sent < -15 ? 'bear' : 'neutral';
+    const sentLabel = sent > 15 ? '+' + Math.round(sent) : sent < -15 ? Math.round(sent) : '0';
+    const sentBarWidth = Math.min(50, Math.abs(sent) / 2);
+
+    const price = STATE.priceCache.get(t.symbol);
+    let priceHtml = '<div class="price-na">—</div>';
+    if (price && !price.failed && price.price) {
+      const chClass = price.changePct > 0.05 ? 'up' : price.changePct < -0.05 ? 'down' : 'flat';
+      const arrow = price.changePct > 0 ? '▲' : price.changePct < 0 ? '▼' : '─';
+      priceHtml = `
+        <div class="price">$${price.price.toFixed(2)}</div>
+        <div class="price-change ${chClass}">${arrow} ${price.changePct.toFixed(2)}%</div>
+      `;
+    } else if (price && price.failed) {
+      priceHtml = '<div class="price-na">N/A</div>';
+    }
+
+    // Quality dots (out of 5)
+    const dotCount = Math.round(quality / 20);
+    const dots = Array.from({length: 5}, (_, i) =>
+      `<div class="quality-dot ${i < dotCount ? 'filled' : ''}"></div>`).join('');
+
+    return `
+      <div class="ticker-row-long" onclick="showTickerDetail('${t.symbol}')">
+        <div class="rank">#${String(idx + 1).padStart(2, '0')}</div>
+        <div class="ticker-info">
+          <div class="ticker-symbol">$${t.symbol}</div>
+          <div class="ticker-meta">${t.posts.size}P · ${(t.score / 1000).toFixed(1)}k</div>
+        </div>
+        <div>
+          <span class="tier-badge tier-${tier}">${tier.toUpperCase()}</span>
+          <div class="ticker-meta" style="margin-top: 4px;">${consensus} SUB${consensus !== 1 ? 'S' : ''}</div>
+        </div>
+        <div class="price-cell">${priceHtml}</div>
+        <div class="quality-score">
+          <div class="quality-value">${Math.round(quality)}</div>
+          <div class="quality-dots">${dots}</div>
+        </div>
+        <div class="persistence-cell">
+          <div class="persistence-days">${persist.scans}</div>
+          <div class="persistence-label">SCANS</div>
+        </div>
+        <div class="sentiment-cell">
+          <div class="sentiment-score ${sentClass}">${sentLabel}</div>
+          <div class="sentiment-bar-mini">
+            <div class="sentiment-fill-mini ${sentClass}" style="width: ${sentBarWidth}px;"></div>
+          </div>
+        </div>
+      </div>
+    `;
+  }).join('');
+
+  document.getElementById('tickerCountLong').textContent = `${sorted.length}`;
+}
+
+function renderPosts() {
+  const list = document.getElementById('postList');
+  const posts = STATE.posts.filter(p => p.tickers && p.tickers.length > 0).slice(0, 20);
+  if (posts.length === 0) {
+    list.innerHTML = '<div class="empty">// NO POSTS WITH TICKERS //</div>';
+    document.getElementById('postCount').textContent = '0';
+    return;
+  }
+  list.innerHTML = posts.map(p => {
+    const net = p.sentiment?.net || 0;
+    const sentClass = net > 2 ? 'bull' : net < -2 ? 'bear' : 'neutral';
+    const sentLabel = net > 2 ? 'BULL' : net < -2 ? 'BEAR' : 'NEUT';
+    return `
+      <div class="post-item" onclick="window.open('${p.permalink}', '_blank')">
+        <div class="post-title">${escapeHtml(p.title)}</div>
+        <div class="post-meta">
+          <span>r/${p.subreddit}<span class="post-sentiment ${sentClass}">${sentLabel}</span></span>
+          <span>${p.score} ↑ · ${p.num_comments} 💬</span>
+        </div>
+        <div class="post-tickers">
+          ${p.tickers.slice(0, 6).map(t => `<span class="ticker-tag">$${t}</span>`).join('')}
+        </div>
+      </div>
+    `;
+  }).join('');
+  document.getElementById('postCount').textContent = posts.length;
+}
+
+function renderDDPosts() {
+  const list = document.getElementById('ddList');
+  const posts = STATE.ddPosts.slice(0, 15);
+  if (posts.length === 0) {
+    list.innerHTML = '<div class="empty">// NO DD POSTS DETECTED //<br><br>Enable r/SecurityAnalysis or r/ValueInvesting to find research</div>';
+    document.getElementById('ddCount').textContent = '0';
+    return;
+  }
+  list.innerHTML = posts.map(p => {
+    const len = (p.selftext.length / 1000).toFixed(1);
+    return `
+      <div class="dd-post" onclick="window.open('${p.permalink}', '_blank')">
+        <div class="dd-post-title">${escapeHtml(p.title)}</div>
+        <div class="dd-post-meta">
+          <span>r/${p.subreddit}</span>
+          <span>${len}k chars · ${p.num_comments} 💬</span>
+        </div>
+        <div class="dd-quality-bar">
+          <span>DD ${p.ddScore}</span>
+          <div class="dd-quality-bar-fill">
+            <div style="width: ${p.ddScore}%;"></div>
+          </div>
+        </div>
+        <div class="dd-tickers">
+          ${(p.tickers || []).slice(0, 6).map(t => `<span class="ticker-tag">$${t}</span>`).join('')}
+        </div>
+      </div>
+    `;
+  }).join('');
+  document.getElementById('ddCount').textContent = posts.length;
+}
+
+// ============================================================
+// MODAL DETAIL
+// ============================================================
+function showTickerDetail(symbol) {
+  const t = STATE.tickers.get(symbol);
+  if (!t) return;
+  const price = STATE.priceCache.get(symbol);
+  const sent = getSentimentScore(t);
+  const quality = getQualityScore(t);
+  const persist = getPersistence(symbol);
+  const z = getZScore(symbol, t.mentions);
+  const consensus = getConsensus(symbol);
+  const tier = getTier(symbol);
+  const breakdown = getSubBreakdown(symbol);
+
+  const history = STATE.history.slice(-24);
+  const mentionData = history.map(h => h.tickers[symbol]?.mentions || 0);
+  const bullData = history.map(h => h.tickers[symbol]?.bull || 0);
+  const bearData = history.map(h => h.tickers[symbol]?.bear || 0);
+
+  const ddRelated = STATE.ddPosts.filter(p => p.tickers?.includes(symbol)).slice(0, 5);
+  const allRelated = STATE.posts.filter(p => p.tickers?.includes(symbol)).slice(0, 5);
+
+  const maxSubCount = Math.max(...Object.values(breakdown), 1);
+  const subBars = Object.entries(breakdown)
+    .sort((a, b) => b[1] - a[1])
+    .map(([sub, count]) => {
+      const subInfo = SUBREDDITS.find(s => s.id === sub);
+      const tier = subInfo?.tier || 'momentum';
+      const pct = (count / maxSubCount) * 100;
+      return `
+        <div class="sub-bar">
+          <div class="sub-bar-label">r/${sub}</div>
+          <div class="sub-bar-track"><div class="sub-bar-fill ${tier}" style="width: ${pct}%;"></div></div>
+          <div class="sub-bar-value">${count}</div>
+        </div>
+      `;
+    }).join('');
+
+  const modal = document.getElementById('modalContent');
+  modal.innerHTML = `
+    <div class="modal-header">
+      <div>
+        <div class="modal-title">$${symbol}</div>
+        <div style="font-size: 11px; color: var(--text-dim); letter-spacing: 0.2em; margin-top: 4px; text-transform: uppercase;">
+          ${t.posts.size} posts · ${t.mentions} mentions · <span class="tier-badge tier-${tier}">${tier.toUpperCase()}</span>
+        </div>
+      </div>
+      <button class="modal-close" onclick="closeModal()">CLOSE ✕</button>
+    </div>
+
+    <div class="modal-stats">
+      <div class="modal-stat">
+        <div class="label">Price</div>
+        <div class="value">${price && price.price ? '$' + price.price.toFixed(2) : '—'}</div>
+      </div>
+      <div class="modal-stat">
+        <div class="label">Change</div>
+        <div class="value" style="color: ${price && price.changePct > 0 ? 'var(--green)' : price && price.changePct < 0 ? 'var(--red)' : 'var(--text-dim)'}">
+          ${price && price.price ? (price.changePct > 0 ? '+' : '') + price.changePct.toFixed(2) + '%' : '—'}
+        </div>
+      </div>
+      <div class="modal-stat">
+        <div class="label">Z-Score</div>
+        <div class="value" style="color: ${z !== null && z > 1.5 ? 'var(--red)' : 'var(--text-bright)'}">
+          ${z !== null ? (z > 0 ? '+' : '') + z.toFixed(1) + 'σ' : '—'}
+        </div>
+      </div>
+      <div class="modal-stat">
+        <div class="label">Quality</div>
+        <div class="value" style="color: var(--purple);">${Math.round(quality)}/100</div>
+      </div>
+      <div class="modal-stat">
+        <div class="label">Persistence</div>
+        <div class="value" style="color: var(--blue);">${persist.scans} scans</div>
+      </div>
+      <div class="modal-stat">
+        <div class="label">Consensus</div>
+        <div class="value">${consensus} sub${consensus !== 1 ? 's' : ''}</div>
+      </div>
+      <div class="modal-stat">
+        <div class="label">Sentiment</div>
+        <div class="value" style="color: ${sent > 15 ? 'var(--green)' : sent < -15 ? 'var(--red)' : 'var(--text-dim)'}">
+          ${sent > 0 ? '+' : ''}${Math.round(sent)}
+        </div>
+      </div>
+      <div class="modal-stat">
+        <div class="label">Karma</div>
+        <div class="value">${t.score.toLocaleString()}</div>
+      </div>
+    </div>
+
+    <div class="chart-container">
+      <div class="chart-title">► Mention Velocity (last ${history.length} scans · ~${history.length * 10}min)</div>
+      ${renderBigChart(mentionData, 'var(--green)')}
+    </div>
+
+    <div class="chart-container">
+      <div class="chart-title">► Sentiment Flow (bull green / bear red)</div>
+      ${renderDualChart(bullData, bearData)}
+    </div>
+
+    <div class="chart-container">
+      <div class="chart-title">► Subreddit Distribution</div>
+      <div class="sub-breakdown">${subBars || '<div style="color: var(--text-dim); font-size: 11px;">No breakdown data</div>'}</div>
+    </div>
+
+    ${ddRelated.length > 0 ? `
+      <div class="chart-container">
+        <div class="chart-title">► DD &amp; Research Posts</div>
+        ${ddRelated.map(p => `
+          <div style="padding: 10px 0; border-bottom: 1px solid var(--border); cursor: pointer;" onclick="window.open('${p.permalink}', '_blank')">
+            <div style="color: var(--text-bright); font-size: 12px; margin-bottom: 6px;">${escapeHtml(p.title)}</div>
+            <div style="font-size: 10px; color: var(--purple); letter-spacing: 0.1em;">
+              DD ${p.ddScore} · r/${p.subreddit} · ${(p.selftext.length / 1000).toFixed(1)}k chars
+            </div>
+          </div>
+        `).join('')}
+      </div>
+    ` : ''}
+
+    <div class="chart-container">
+      <div class="chart-title">► Recent Posts</div>
+      ${allRelated.map(p => `
+        <div style="padding: 8px 0; border-bottom: 1px solid var(--border); font-size: 12px; cursor: pointer;" onclick="window.open('${p.permalink}', '_blank')">
+          <div style="color: var(--text-bright); margin-bottom: 4px;">${escapeHtml(p.title)}</div>
+          <div style="font-size: 10px; color: var(--text-dim); letter-spacing: 0.1em;">r/${p.subreddit} · ${p.score} ↑</div>
+        </div>
+      `).join('') || '<div style="color: var(--text-dim); font-size: 11px;">No posts captured</div>'}
+    </div>
+
+    <div style="display: flex; gap: 8px; margin-top: 16px;">
+      <button class="btn" onclick="window.open('https://finance.yahoo.com/quote/${symbol}', '_blank')">YAHOO →</button>
+      <button class="btn secondary" onclick="window.open('https://www.google.com/search?q=%24${symbol}+stock', '_blank')">SEARCH →</button>
+    </div>
+  `;
+  document.getElementById('modalOverlay').classList.add('active');
+}
+
+function renderBigChart(data, color) {
+  if (data.length < 2) return '<div style="color: var(--text-dim); font-size: 11px; padding: 40px 0; text-align: center;">Need more scans for chart</div>';
+  const w = 720, h = 180, pad = 30;
+  const max = Math.max(...data, 1);
+  const step = (w - pad * 2) / (data.length - 1);
+  const yScale = (h - pad * 2) / max;
+  const points = data.map((v, i) => `${pad + i * step},${h - pad - v * yScale}`).join(' ');
+  const area = `${pad},${h - pad} ${points} ${pad + (data.length - 1) * step},${h - pad}`;
+  return `
+    <svg class="chart-svg" viewBox="0 0 ${w} ${h}" preserveAspectRatio="none">
+      <defs>
+        <linearGradient id="grad" x1="0" x2="0" y1="0" y2="1">
+          <stop offset="0%" stop-color="${color}" stop-opacity="0.3"/>
+          <stop offset="100%" stop-color="${color}" stop-opacity="0"/>
+        </linearGradient>
+      </defs>
+      <line x1="${pad}" y1="${h - pad}" x2="${w - pad}" y2="${h - pad}" stroke="var(--border)"/>
+      <line x1="${pad}" y1="${pad}" x2="${pad}" y2="${h - pad}" stroke="var(--border)"/>
+      <polygon points="${area}" fill="url(#grad)"/>
+      <polyline points="${points}" fill="none" stroke="${color}" stroke-width="2"/>
+      ${data.map((v, i) => `<circle cx="${pad + i * step}" cy="${h - pad - v * yScale}" r="2.5" fill="${color}"/>`).join('')}
+      <text x="${pad}" y="${pad - 8}" fill="var(--text-dim)" font-size="9" font-family="JetBrains Mono">MAX: ${max}</text>
+    </svg>
+  `;
+}
+
+function renderDualChart(bull, bear) {
+  if (bull.length < 2) return '<div style="color: var(--text-dim); font-size: 11px; padding: 40px 0; text-align: center;">Need more scans for chart</div>';
+  const w = 720, h = 180, pad = 30;
+  const max = Math.max(...bull, ...bear, 1);
+  const step = (w - pad * 2) / (bull.length - 1);
+  const yScale = (h - pad * 2) / max;
+  const bullPts = bull.map((v, i) => `${pad + i * step},${h - pad - v * yScale}`).join(' ');
+  const bearPts = bear.map((v, i) => `${pad + i * step},${h - pad - v * yScale}`).join(' ');
+  return `
+    <svg class="chart-svg" viewBox="0 0 ${w} ${h}" preserveAspectRatio="none">
+      <line x1="${pad}" y1="${h - pad}" x2="${w - pad}" y2="${h - pad}" stroke="var(--border)"/>
+      <line x1="${pad}" y1="${pad}" x2="${pad}" y2="${h - pad}" stroke="var(--border)"/>
+      <polyline points="${bullPts}" fill="none" stroke="var(--green)" stroke-width="2"/>
+      <polyline points="${bearPts}" fill="none" stroke="var(--red)" stroke-width="2"/>
+      <text x="${w - pad - 80}" y="${pad}" fill="var(--green)" font-size="9" font-family="JetBrains Mono">━ BULL</text>
+      <text x="${w - pad - 30}" y="${pad}" fill="var(--red)" font-size="9" font-family="JetBrains Mono">━ BEAR</text>
+    </svg>
+  `;
+}
+
+function closeModal() {
+  document.getElementById('modalOverlay').classList.remove('active');
+}
+document.getElementById('modalOverlay').addEventListener('click', (e) => {
+  if (e.target.id === 'modalOverlay') closeModal();
+});
+
+// ============================================================
+// HELP SYSTEM
+// ============================================================
+const HELP_CONTENT = {
+  'tab-short': {
+    title: 'Short-Term View',
+    tag: 'Intraday signals · 0DTE / swing scope',
+    body: `
+      <div class="help-section">
+        <div class="help-section-label">What it does</div>
+        <div class="help-section-body">
+          Surfaces tickers gaining attention <strong>right now</strong>, not over weeks. Designed for day-trading and short swings where the edge is being early to a momentum move.
+        </div>
+      </div>
+      <div class="help-section">
+        <div class="help-section-label">Key signals</div>
+        <div class="help-section-body">
+          <ul>
+            <li><strong>Z-Score</strong>: how unusual today's mention rate is vs the ticker's own baseline. <code>+2σ</code> = roughly 2x its normal chatter.</li>
+            <li><strong>Velocity</strong>: acceleration of mentions in the last ~30 min vs prior history.</li>
+            <li><strong>Sentiment</strong>: bullish/bearish balance from the post text.</li>
+          </ul>
+        </div>
+      </div>
+      <div class="help-section">
+        <div class="help-section-label">Best workflow</div>
+        <div class="help-section-body">
+          Check Z-Score sort pre-market and during power hour. Cross-reference with the price column — sentiment direction <em>vs</em> price direction can flag mean-reversion setups.
+        </div>
+      </div>
+    `,
+  },
+  'tab-long': {
+    title: 'Long-Term View',
+    tag: 'Position trades · Swing / multi-week',
+    body: `
+      <div class="help-section">
+        <div class="help-section-label">What it does</div>
+        <div class="help-section-body">
+          Filters out short-term meme noise to surface tickers that <strong>serious investors are researching</strong>. Weights mentions by sub quality and tracks persistence over days/weeks.
+        </div>
+      </div>
+      <div class="help-section">
+        <div class="help-section-label">Key signals</div>
+        <div class="help-section-body">
+          <ul>
+            <li><strong>Quality</strong>: average DD-post score for that ticker, plus sub-weight bonus.</li>
+            <li><strong>Persistence</strong>: how many distinct scans the ticker has appeared in. High = sustained interest, not a one-day pump.</li>
+            <li><strong>Consensus</strong>: how many different subreddits are talking about it. 3+ subs = broad signal.</li>
+            <li><strong>Tier</strong>: auto-classification based on which subs dominate the chatter.</li>
+          </ul>
+        </div>
+      </div>
+      <div class="help-section">
+        <div class="help-section-label">Best workflow</div>
+        <div class="help-section-body">
+          Weekend review on Quality sort. A ticker showing high on <em>both</em> Short-Term and Long-Term is the rare combo: short-term momentum backed by long-term conviction.
+        </div>
+      </div>
+    `,
+  },
+  'zscore': {
+    title: 'Z-Score',
+    tag: 'Statistical anomaly detection',
+    body: `
+      <div class="help-section">
+        <div class="help-section-label">What it measures</div>
+        <div class="help-section-body">
+          How many <strong>standard deviations</strong> the current mention count is from this ticker's own running average. Each ticker has its own baseline that updates every scan.
+        </div>
+      </div>
+      <div class="help-section">
+        <div class="help-section-label">Why it matters more than raw count</div>
+        <div class="help-section-body">
+          Raw mentions are dominated by the same usual suspects (TSLA, NVDA, SPY). A z-score levels the field: a sleeper stock going from 1 mention to 8 lights up at <code>+3σ</code> even if NVDA has 50 mentions and a <code>0σ</code> score because that's just its normal volume.
+        </div>
+      </div>
+      <div class="help-section">
+        <div class="help-section-label">Color thresholds</div>
+        <div class="help-section-body">
+          <ul>
+            <li><code>>+2σ</code> red glow — very unusual, often pre-momentum</li>
+            <li><code>+1 to +2σ</code> amber — building interest</li>
+            <li><code>< +1σ</code> dim — normal chatter</li>
+          </ul>
+        </div>
+      </div>
+      <div class="help-section">
+        <div class="help-section-label">Limitation</div>
+        <div class="help-section-body">
+          Needs at least 6 scans of history before producing a value. First hour will show <code>—</code>.
+        </div>
+      </div>
+    `,
+  },
+  'velocity': {
+    title: 'Velocity',
+    tag: 'Mention acceleration',
+    body: `
+      <div class="help-section">
+        <div class="help-section-label">What it measures</div>
+        <div class="help-section-body">
+          The rate of change in mentions: recent 2 scans (~20 min) minus the average of older scans. Positive = gaining steam. Negative = fading.
+        </div>
+      </div>
+      <div class="help-section">
+        <div class="help-section-label">When to use it</div>
+        <div class="help-section-body">
+          Catching <strong>movement</strong> rather than absolute popularity. A ticker accelerating from 2 → 5 → 12 mentions has higher velocity than one stuck at 30. The first is breaking out; the second is already priced in.
+        </div>
+      </div>
+    `,
+  },
+  'mentions': {
+    title: 'Mentions',
+    tag: 'Raw count',
+    body: `
+      <div class="help-section">
+        <div class="help-section-label">What it is</div>
+        <div class="help-section-body">
+          Total number of posts (across selected subs) that contained this ticker in the current scan. <code>$TICKER</code> matches count more than bare uppercase matches in the underlying weighting.
+        </div>
+      </div>
+      <div class="help-section">
+        <div class="help-section-label">Caveat</div>
+        <div class="help-section-body">
+          Raw count favors mega-caps (TSLA, SPY, NVDA) that are always discussed. Use <strong>Z-Score</strong> or <strong>Velocity</strong> to find the moves that aren't already obvious.
+        </div>
+      </div>
+    `,
+  },
+  'sentiment': {
+    title: 'Sentiment Score',
+    tag: 'Bull/bear language analysis',
+    body: `
+      <div class="help-section">
+        <div class="help-section-label">What it measures</div>
+        <div class="help-section-body">
+          Net bullish vs bearish language in posts mentioning the ticker. Scored from <code>-100</code> (fully bearish) to <code>+100</code> (fully bullish). Lexicon includes ~150 financial Reddit terms weighted by intensity.
+        </div>
+      </div>
+      <div class="help-section">
+        <div class="help-section-label">Example weights</div>
+        <div class="help-section-body">
+          <ul>
+            <li>Bullish: "moon" +3, "btfd" +4, "rocket" +3, "squeeze" +3, "bullish" +4</li>
+            <li>Bearish: "bagholder" +3, "rugpull" +4, "bloodbath" +4, "crash" +4</li>
+          </ul>
+        </div>
+      </div>
+      <div class="help-section">
+        <div class="help-section-label">Divergence play</div>
+        <div class="help-section-body">
+          Bullish sentiment + falling price = possible dip-buy. Bearish sentiment + rising price = potential capitulation top. Look for the disagreements.
+        </div>
+      </div>
+    `,
+  },
+  'trend': {
+    title: '60-Minute Trend',
+    tag: 'Mention sparkline',
+    body: `
+      <div class="help-section">
+        <div class="help-section-label">What it shows</div>
+        <div class="help-section-body">
+          Mini chart of the last 6 scans (~60 min) of mention counts for this ticker. Green line = trending up at the moment, red = trending down.
+        </div>
+      </div>
+      <div class="help-section">
+        <div class="help-section-label">Reading it</div>
+        <div class="help-section-body">
+          Look for <strong>shapes</strong>: stair-stepping up = sustained momentum building, single spike = one-off post, V-shaped = bounce.
+        </div>
+      </div>
+    `,
+  },
+  'price': {
+    title: 'Price &amp; Day Change',
+    tag: 'Live market data',
+    body: `
+      <div class="help-section">
+        <div class="help-section-label">Data source</div>
+        <div class="help-section-body">
+          Pulled from <strong>Stooq</strong> (free, no API key, CORS-friendly). Latest close price plus open-to-close % change. Cached for 5 minutes to avoid rate limits.
+        </div>
+      </div>
+      <div class="help-section">
+        <div class="help-section-label">Caveats</div>
+        <div class="help-section-body">
+          <ul>
+            <li>US tickers only.</li>
+            <li>End-of-day data — not real-time intraday quotes.</li>
+            <li>Some thinly-traded tickers will show <code>N/A</code>.</li>
+            <li>Only the top 20 tickers per scan get a price fetch (to be polite to Stooq).</li>
+          </ul>
+        </div>
+      </div>
+    `,
+  },
+  'dd': {
+    title: 'DD (Due Diligence) Detection',
+    tag: 'Filtering signal from noise',
+    body: `
+      <div class="help-section">
+        <div class="help-section-label">What counts as DD</div>
+        <div class="help-section-body">
+          A post gets a DD score 0-100 based on multiple quality signals. Posts scoring 35+ make the DD panel.
+        </div>
+      </div>
+      <div class="help-section">
+        <div class="help-section-label">Scoring inputs</div>
+        <div class="help-section-body">
+          <ul>
+            <li><strong>Length</strong> (up to 40 pts): &gt;5000 chars = real writing</li>
+            <li><strong>Flair</strong> (up to 25 pts): explicit "DD", "Discussion", "Analysis" tags</li>
+            <li><strong>Upvote ratio</strong> (up to 15 pts): &gt;0.92 = community endorsed</li>
+            <li><strong>Discussion depth</strong> (up to 20 pts): comment-to-score ratio + total comments</li>
+            <li><strong>Sub quality</strong> (up to 15 pts): research/quality subs bonus</li>
+          </ul>
+        </div>
+      </div>
+      <div class="help-section">
+        <div class="help-section-label">Why it matters</div>
+        <div class="help-section-body">
+          A 4000-word post in r/SecurityAnalysis with 0.95 upvote ratio is signal. A 50-word "YOLO $XYZ to the moon 🚀" is not. DD score separates them automatically.
+        </div>
+      </div>
+    `,
+  },
+  'quality': {
+    title: 'Quality Score',
+    tag: 'Composite long-term signal',
+    body: `
+      <div class="help-section">
+        <div class="help-section-label">Formula</div>
+        <div class="help-section-body">
+          <code>Quality = avg(DD score of posts mentioning ticker) + min(20, weighted mention bonus)</code>. Scaled 0-100, shown as both a number and 5 purple dots.
+        </div>
+      </div>
+      <div class="help-section">
+        <div class="help-section-label">What high quality means</div>
+        <div class="help-section-body">
+          The ticker is being discussed in <strong>substantive, long-form posts</strong> on quality-weighted subs. This is closer to "what serious investors are thinking about" than "what's trending."
+        </div>
+      </div>
+      <div class="help-section">
+        <div class="help-section-label">What it misses</div>
+        <div class="help-section-body">
+          Quality score doesn't tell you direction (bullish or bearish on the ticker) — pair it with the Sentiment column. A high-quality post can absolutely be a bearish short thesis.
+        </div>
+      </div>
+    `,
+  },
+  'persistence': {
+    title: 'Persistence',
+    tag: 'Conviction vs flash-in-the-pan',
+    body: `
+      <div class="help-section">
+        <div class="help-section-label">What it counts</div>
+        <div class="help-section-body">
+          Number of distinct scans (since first seen) where this ticker had any mentions. Higher = it keeps coming back, scan after scan.
+        </div>
+      </div>
+      <div class="help-section">
+        <div class="help-section-label">The key insight</div>
+        <div class="help-section-body">
+          A ticker mentioned <strong>200 times in one day</strong> with 1 scan of persistence = pump. The same ticker mentioned <strong>30 times spread across 50 scans</strong> over a week = real conviction.
+        </div>
+      </div>
+      <div class="help-section">
+        <div class="help-section-label">Build time</div>
+        <div class="help-section-body">
+          Needs days of history to be meaningful. After a week of scans, persistence becomes a strong filter against meme volatility.
+        </div>
+      </div>
+    `,
+  },
+  'consensus': {
+    title: 'Cross-Sub Consensus',
+    tag: 'Breadth of interest',
+    body: `
+      <div class="help-section">
+        <div class="help-section-label">What it counts</div>
+        <div class="help-section-body">
+          Number of <strong>distinct subreddits</strong> mentioning the ticker in the current scan.
+        </div>
+      </div>
+      <div class="help-section">
+        <div class="help-section-label">Why it filters</div>
+        <div class="help-section-body">
+          A ticker discussed in just WSB is a meme play. The same ticker showing up in WSB <em>and</em> r/investing <em>and</em> r/SecurityAnalysis is a different beast — different audiences arriving at the same conclusion.
+        </div>
+      </div>
+      <div class="help-section">
+        <div class="help-section-label">Best read</div>
+        <div class="help-section-body">
+          Consensus of 3+ across mixed tiers (meme + quality) often precedes broader market interest. Click any ticker → modal → Subreddit Distribution to see the breakdown.
+        </div>
+      </div>
+    `,
+  },
+  'tier': {
+    title: 'Tier Classification',
+    tag: 'Auto-categorized by dominant sub',
+    body: `
+      <div class="help-section">
+        <div class="help-section-label">The four tiers</div>
+        <div class="help-section-body">
+          <ul>
+            <li><span class="tier-inline tier-meme">MEME</span> Mostly WSB / pennystocks / options chatter</li>
+            <li><span class="tier-inline tier-momentum">MOMENTUM</span> r/stocks, r/StockMarket — broader retail</li>
+            <li><span class="tier-inline tier-quality">QUALITY</span> r/investing, r/dividends — long-term retail</li>
+            <li><span class="tier-inline tier-research">RESEARCH</span> r/SecurityAnalysis, r/ValueInvesting — deep DD</li>
+          </ul>
+        </div>
+      </div>
+      <div class="help-section">
+        <div class="help-section-label">How to read it</div>
+        <div class="help-section-body">
+          Tier indicates <strong>where the chatter is coming from</strong>, which hints at the kind of trade it suits. RESEARCH-tier tickers tend to be value/quality plays. MEME-tier tickers are squeeze candidates. Same ticker can shift tiers over time.
+        </div>
+      </div>
+    `,
+  },
+  'subweight': {
+    title: 'Subreddit Weights',
+    tag: 'Not all subs are equal',
+    body: `
+      <div class="help-section">
+        <div class="help-section-label">Current weights</div>
+        <div class="help-section-body">
+          <ul>
+            <li><code>r/SecurityAnalysis</code> — 2.0x</li>
+            <li><code>r/ValueInvesting</code> — 2.0x</li>
+            <li><code>r/investing</code> — 1.5x</li>
+            <li><code>r/dividends</code> — 1.5x</li>
+            <li><code>r/stocks</code> — 1.0x</li>
+            <li><code>r/StockMarket</code> — 0.8x</li>
+            <li><code>r/options</code> — 0.6x</li>
+            <li><code>r/wallstreetbets</code> — 0.5x</li>
+            <li><code>r/pennystocks</code> — 0.3x</li>
+          </ul>
+        </div>
+      </div>
+      <div class="help-section">
+        <div class="help-section-label">Why</div>
+        <div class="help-section-body">
+          A ticker mentioned twice in r/SecurityAnalysis outscores one mentioned 8 times in WSB on the weighted ranking. Used in Quality and Weighted sort modes. The Short-Term view doesn't apply these weights — there, raw mentions matter more.
+        </div>
+      </div>
+    `,
+  },
+  'history': {
+    title: 'Scan History',
+    tag: 'Local storage',
+    body: `
+      <div class="help-section">
+        <div class="help-section-label">Where it lives</div>
+        <div class="help-section-body">
+          Every scan saves a snapshot (timestamp + ticker counts + sentiment) to your <strong>browser's localStorage</strong>. Nothing is sent to a server. Up to 144 scans (24 hours) are retained.
+        </div>
+      </div>
+      <div class="help-section">
+        <div class="help-section-label">What it enables</div>
+        <div class="help-section-body">
+          Z-Score baselines, Persistence counts, Velocity calculation, and the mention-history charts in the ticker detail modal all depend on history. The longer you keep the tab open / running, the better these signals get.
+        </div>
+      </div>
+      <div class="help-section">
+        <div class="help-section-label">Reset</div>
+        <div class="help-section-body">
+          Use <strong>CLEAR HIST</strong> to wipe all history, baselines, and first-seen data. Useful if you change subreddit selection significantly.
+        </div>
+      </div>
+    `,
+  },
+  'subs': {
+    title: 'Subreddit Selection',
+    tag: 'Tune your data source',
+    body: `
+      <div class="help-section">
+        <div class="help-section-label">Manual control</div>
+        <div class="help-section-body">
+          Hover any pill to see its weight and tier in a tooltip. Click to toggle inclusion. At least one subreddit must remain enabled.
+        </div>
+      </div>
+      <div class="help-section">
+        <div class="help-section-label">Faster: use presets</div>
+        <div class="help-section-body">
+          For common trading styles, hit a <strong>Preset</strong> button above instead of toggling subs one by one — it auto-selects the right combination and switches to the matching view/sort.
+        </div>
+      </div>
+    `,
+  },
+  'presets': {
+    title: 'Trading Style Presets',
+    tag: 'One-click configurations',
+    body: `
+      <div class="help-section">
+        <div class="help-section-label">What they do</div>
+        <div class="help-section-body">
+          Each preset selects a curated subreddit set, switches to the most useful view (Short or Long), and applies the recommended sort mode in one click. Triggers an immediate scan.
+        </div>
+      </div>
+      <div class="help-section">
+        <div class="help-section-label">The four presets</div>
+        <div class="help-section-body">
+          <ul>
+            <li><strong>Day Trading</strong> — WSB + options + pennystocks. Short-Term view, Velocity sort. Volume-heavy, noisy, but catches intraday moves fast.</li>
+            <li><strong>Swing Trading</strong> — WSB + stocks + investing. Short-Term view, Z-Score sort. Balanced signal-to-noise for multi-day holds.</li>
+            <li><strong>Position Trading</strong> — investing + SecurityAnalysis + ValueInvesting + dividends. Long-Term view, Quality sort. Signal-heavy for multi-week or longer.</li>
+            <li><strong>Full Picture</strong> — all subs enabled. Short-Term view, Mentions sort. Slower scans but most comprehensive data — use when researching a specific name.</li>
+          </ul>
+        </div>
+      </div>
+      <div class="help-section">
+        <div class="help-section-label">Highlighting</div>
+        <div class="help-section-body">
+          The active preset stays highlighted while its sub set is fully matched. As soon as you manually toggle any subreddit, the highlight clears — you're now on a custom mix.
+        </div>
+      </div>
+    `,
+  },
+  'sort-short': {
+    title: 'Short-Term Sort Modes',
+    tag: 'Five ways to rank',
+    body: `
+      <div class="help-section">
+        <div class="help-section-label">Options</div>
+        <div class="help-section-body">
+          <ul>
+            <li><strong>Mentions</strong> — raw count (favors mega-caps)</li>
+            <li><strong>Velocity</strong> — fastest accelerating right now</li>
+            <li><strong>Z-Score</strong> — most statistically unusual chatter (best early signal)</li>
+            <li><strong>Bullish</strong> — highest net positive sentiment (min 2 mentions)</li>
+            <li><strong>Bearish</strong> — highest net negative sentiment (min 2 mentions)</li>
+          </ul>
+        </div>
+      </div>
+    `,
+  },
+  'sort-long': {
+    title: 'Long-Term Sort Modes',
+    tag: 'Four lenses for conviction',
+    body: `
+      <div class="help-section">
+        <div class="help-section-label">Options</div>
+        <div class="help-section-body">
+          <ul>
+            <li><strong>Quality</strong> — best DD posts + sub-weighted</li>
+            <li><strong>Persistence</strong> — appearing most often across scans</li>
+            <li><strong>Consensus</strong> — discussed in most different subs</li>
+            <li><strong>Weighted</strong> — raw mentions scaled by sub weights</li>
+          </ul>
+        </div>
+      </div>
+    `,
+  },
+  'stat-posts': {
+    title: 'Posts Scanned',
+    tag: 'Coverage volume',
+    body: `
+      <div class="help-section">
+        <div class="help-section-body">
+          Total posts pulled from selected subreddits in this scan. Each sub returns up to 50 hot posts, so 3 subs = up to 150 posts.
+        </div>
+      </div>
+    `,
+  },
+  'stat-tickers': {
+    title: 'Unique Tickers',
+    tag: 'Total symbols extracted',
+    body: `
+      <div class="help-section">
+        <div class="help-section-body">
+          Count of distinct stock symbols extracted across all posts in this scan, after stopword filtering.
+        </div>
+      </div>
+    `,
+  },
+  'panel-short-tickers': {
+    title: 'Short-Term Tickers Panel',
+    tag: 'Main intraday leaderboard',
+    body: `
+      <div class="help-section">
+        <div class="help-section-label">How rows are ordered</div>
+        <div class="help-section-body">
+          By the active <strong>Sort</strong> mode (see Sort help). Top 30 are shown.
+        </div>
+      </div>
+      <div class="help-section">
+        <div class="help-section-label">Click a row</div>
+        <div class="help-section-body">
+          Opens a detail modal with mention history chart, sentiment flow, sub distribution, related posts, and Yahoo/search shortcuts.
+        </div>
+      </div>
+      <div class="help-section">
+        <div class="help-section-label">Delta arrows</div>
+        <div class="help-section-body">
+          Show rank change since the previous scan. <code>▲3</code> = jumped 3 spots up. <code>NEW</code> = wasn't in the last scan.
+        </div>
+      </div>
+    `,
+  },
+  'panel-long-tickers': {
+    title: 'Long-Term Tickers Panel',
+    tag: 'Position-trading leaderboard',
+    body: `
+      <div class="help-section">
+        <div class="help-section-label">Difference from Short-Term</div>
+        <div class="help-section-body">
+          Same underlying ticker data, but ordered by quality / persistence / consensus / weighted scores rather than raw velocity. Includes tier badges to show <em>who's</em> talking.
+        </div>
+      </div>
+      <div class="help-section">
+        <div class="help-section-label">Best practice</div>
+        <div class="help-section-body">
+          Use after the scanner has run for at least a day. The Persistence column gets meaningful as history builds.
+        </div>
+      </div>
+    `,
+  },
+  'panel-hot-posts': {
+    title: 'Hot Posts Panel',
+    tag: 'Top posts containing tickers',
+    body: `
+      <div class="help-section">
+        <div class="help-section-body">
+          Most recent Reddit posts that contained at least one ticker. Color-coded sentiment tag (BULL / BEAR / NEUT) based on the post text. Click to open the Reddit thread.
+        </div>
+      </div>
+    `,
+  },
+  'panel-dd': {
+    title: 'DD &amp; Research Panel',
+    tag: 'Substantive analysis posts',
+    body: `
+      <div class="help-section">
+        <div class="help-section-body">
+          Only posts scoring 35+ on the DD detector. Shows the score as a purple bar, post length, and tickers discussed. Click to read the full post on Reddit. See the <strong>DD Detection</strong> help for scoring details.
+        </div>
+      </div>
+      <div class="help-section">
+        <div class="help-section-label">Best practice</div>
+        <div class="help-section-body">
+          Enable r/SecurityAnalysis and r/ValueInvesting for the highest hit rate. Both are slower-moving but produce serious research.
+        </div>
+      </div>
+    `,
+  },
+};
+
+function showHelp(key) {
+  const content = HELP_CONTENT[key];
+  if (!content) return;
+  const modal = document.getElementById('helpModalContent');
+  modal.innerHTML = `
+    <div class="help-modal-header">
+      <div>
+        <div class="help-modal-title">${content.title}</div>
+        <div class="help-modal-tag">${content.tag}</div>
+      </div>
+      <button class="help-modal-close" onclick="closeHelp()">CLOSE ✕</button>
+    </div>
+    ${content.body}
+  `;
+  document.getElementById('helpModalOverlay').classList.add('active');
+}
+
+function closeHelp() {
+  document.getElementById('helpModalOverlay').classList.remove('active');
+}
+
+document.getElementById('helpModalOverlay').addEventListener('click', (e) => {
+  if (e.target.id === 'helpModalOverlay') closeHelp();
+});
+
+document.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape') {
+    closeHelp();
+    closeModal();
+  }
+});
+
+window.showHelp = showHelp;
+window.closeHelp = closeHelp;
+
+// ============================================================
+// HELPERS
+// ============================================================
+function escapeHtml(s) {
+  const div = document.createElement('div');
+  div.textContent = s;
+  return div.innerHTML;
+}
+function formatTime(d) {
+  if (!d) return '—';
+  return d.toLocaleTimeString('en-US', { hour12: false });
+}
+function setStatus(type, text) {
+  const pulse = document.getElementById('statusPulse');
+  pulse.className = 'pulse' + (type === 'error' ? ' error' : type === 'scanning' ? ' idle' : '');
+  document.getElementById('statusText').textContent = text;
+}
+function updateCountdown() {
+  if (!STATE.nextScanAt) { document.getElementById('countdown').textContent = '—'; return; }
+  const remaining = Math.max(0, STATE.nextScanAt - Date.now());
+  const mins = Math.floor(remaining / 60000);
+  const secs = Math.floor((remaining % 60000) / 1000);
+  document.getElementById('countdown').textContent =
+    `${String(mins).padStart(2, '0')}:${String(secs).padStart(2, '0')}`;
+}
+
+function renderSubPills() {
+  const container = document.getElementById('subPills');
+  container.innerHTML = SUBREDDITS.map(s => `
+    <button class="pill ${STATE.selectedSubs.has(s.id) ? 'active' : ''}" data-sub="${s.id}" title="Weight: ${s.weight}x · Tier: ${s.tier}">
+      r/${s.label}
+    </button>
+  `).join('');
+  container.querySelectorAll('.pill').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const sub = btn.dataset.sub;
+      if (STATE.selectedSubs.has(sub)) {
+        if (STATE.selectedSubs.size > 1) STATE.selectedSubs.delete(sub);
+      } else STATE.selectedSubs.add(sub);
+      // Manual change clears the active preset (no longer matches a preset)
+      STATE.activePreset = matchPreset();
+      renderSubPills();
+      renderPresetPills();
+    });
+  });
+}
+
+// Check if the currently-selected subs exactly match any preset; return preset id or null
+function matchPreset() {
+  const current = [...STATE.selectedSubs].sort().join(',');
+  for (const p of PRESETS) {
+    const presetSubs = [...p.subs].sort().join(',');
+    if (current === presetSubs) return p.id;
+  }
+  return null;
+}
+
+function applyPreset(presetId) {
+  const preset = PRESETS.find(p => p.id === presetId);
+  if (!preset) return;
+  STATE.selectedSubs = new Set(preset.subs);
+  STATE.activePreset = preset.id;
+
+  // Switch view + sort to the recommended one for this trading style
+  if (preset.recommendedView && STATE.currentView !== preset.recommendedView) {
+    document.querySelectorAll('.mega-tab').forEach(t => {
+      t.classList.toggle('active', t.dataset.view === preset.recommendedView);
+    });
+    document.querySelectorAll('.view-section').forEach(v => v.classList.remove('active'));
+    document.getElementById('view' + (preset.recommendedView === 'short' ? 'Short' : 'Long')).classList.add('active');
+    STATE.currentView = preset.recommendedView;
+  }
+  if (preset.recommendedSort) {
+    if (preset.recommendedView === 'short') STATE.sortShort = preset.recommendedSort;
+    else STATE.sortLong = preset.recommendedSort;
+    rerenderSortPills();
+  }
+
+  renderSubPills();
+  renderPresetPills();
+  // Re-render the affected ticker list with new sort
+  if (STATE.currentView === 'short') renderTickersShort();
+  else renderTickersLong();
+  // Kick off an immediate scan with the new sub set
+  performScan();
+}
+
+function renderPresetPills() {
+  const container = document.getElementById('presetPills');
+  if (!container) return;
+  container.innerHTML = PRESETS.map(p => `
+    <button class="preset-pill ${STATE.activePreset === p.id ? 'active' : ''}" data-preset="${p.id}">
+      <span class="preset-icon">${p.icon}</span>
+      <span class="preset-name">${p.name}</span>
+      <span class="preset-desc">${p.desc}</span>
+    </button>
+  `).join('');
+  container.querySelectorAll('.preset-pill').forEach(btn => {
+    btn.addEventListener('click', () => applyPreset(btn.dataset.preset));
+  });
+}
+
+function renderSortPills(containerId, options, currentKey, onClick) {
+  const container = document.getElementById(containerId);
+  container.innerHTML = options.map(s => `
+    <button class="pill ${currentKey === s.id ? 'active' : ''}" data-sort="${s.id}">${s.label}</button>
+  `).join('');
+  container.querySelectorAll('.pill').forEach(btn => {
+    btn.addEventListener('click', () => onClick(btn.dataset.sort));
+  });
+}
+
+// ============================================================
+// INIT
+// ============================================================
+document.getElementById('scanNowBtn').addEventListener('click', () => performScan());
+document.getElementById('clearHistoryBtn').addEventListener('click', () => {
+  if (confirm('Clear all stored history, baselines, and persistence data?')) {
+    STATE.history = [];
+    STATE.tickerBaselines.clear();
+    STATE.tickerFirstSeen.clear();
+    saveState();
+    render();
+  }
+});
+
+document.querySelectorAll('.mega-tab').forEach(tab => {
+  tab.addEventListener('click', () => {
+    document.querySelectorAll('.mega-tab').forEach(t => t.classList.remove('active'));
+    document.querySelectorAll('.view-section').forEach(v => v.classList.remove('active'));
+    tab.classList.add('active');
+    STATE.currentView = tab.dataset.view;
+    document.getElementById('view' + (STATE.currentView === 'short' ? 'Short' : 'Long')).classList.add('active');
+  });
+});
+
+loadState();
+STATE.activePreset = matchPreset();
+renderPresetPills();
+renderSubPills();
+renderSortPills('sortPillsShort', SORT_OPTIONS_SHORT, STATE.sortShort, (id) => {
+  STATE.sortShort = id;
+  renderSortPills('sortPillsShort', SORT_OPTIONS_SHORT, STATE.sortShort, arguments.callee);
+  renderTickersShort();
+});
+renderSortPills('sortPillsLong', SORT_OPTIONS_LONG, STATE.sortLong, (id) => {
+  STATE.sortLong = id;
+  renderSortPills('sortPillsLong', SORT_OPTIONS_LONG, STATE.sortLong, arguments.callee);
+  renderTickersLong();
+});
+
+// Fix the sort pill click handlers (arguments.callee doesn't work in strict mode/modules)
+function rerenderSortPills() {
+  renderSortPills('sortPillsShort', SORT_OPTIONS_SHORT, STATE.sortShort, (id) => {
+    STATE.sortShort = id; rerenderSortPills(); renderTickersShort();
+  });
+  renderSortPills('sortPillsLong', SORT_OPTIONS_LONG, STATE.sortLong, (id) => {
+    STATE.sortLong = id; rerenderSortPills(); renderTickersLong();
+  });
+}
+rerenderSortPills();
+
+performScan();
+STATE.refreshInterval = setInterval(performScan, SCAN_INTERVAL_MS);
+STATE.countdownInterval = setInterval(updateCountdown, 1000);
+
+window.showTickerDetail = showTickerDetail;
+window.closeModal = closeModal;
+</script>
+
+</body>
+</html>
