@@ -1867,7 +1867,10 @@ const STATE = {
 
 const SCAN_INTERVAL_MS = 10 * 60 * 1000;
 const HISTORY_KEY = 'tickerscan_history_v3';
-const BASELINE_KEY = 'tickerscan_baselines_v3';
+// v4 of baseline key: forced reset because crosspost-deduplicated mention
+// counts (introduced in v16) are on a different scale than the old per-post
+// counts. Without a reset, z-scores would be artificially low for ~10 scans.
+const BASELINE_KEY = 'tickerscan_baselines_v4';
 const FIRSTSEEN_KEY = 'tickerscan_firstseen_v3';
 const MAX_HISTORY = 144;
 const PRICE_CACHE_MS = 5 * 60 * 1000;
@@ -2267,13 +2270,71 @@ async function performScan() {
   const tickerMap = new Map();
   const nowTs = Date.now();
 
+  // ============================================================
+  // CROSSPOST DEDUPLICATION
+  // Same (normalized title + author) across multiple subs = same opinion,
+  // not N independent signals. Group them, then process each group as
+  // one logical "post event" with a damped crosspost multiplier:
+  //   1 sub  -> 1.0x (full weight)
+  //   2 subs -> 1.3x (some bonus for spread)
+  //   3 subs -> 1.5x
+  //   4+     -> 1.7x (capped, diminishing returns)
+  // Sentiment, karma, and sub-weighting all use the same dedup'd entries.
+  // For sub-weighting (used in long-term Quality/Weighted sort), we use the
+  // *highest* sub weight across the crossposts — so r/SecurityAnalysis
+  // appearance wins over r/wallstreetbets duplicate of the same post.
+  // ============================================================
+  function normalizeTitle(s) {
+    return (s || '').toLowerCase().replace(/\s+/g, ' ').trim();
+  }
+  function crosspostMultiplier(n) {
+    if (n <= 1) return 1.0;
+    if (n === 2) return 1.3;
+    if (n === 3) return 1.5;
+    return 1.7;
+  }
+  const postGroups = new Map();
+  const memberLookup = new Map(); // key -> array of member posts, for fast annotation
   for (const post of allPosts) {
+    const key = `${normalizeTitle(post.title)}__${post.author || ''}`;
+    if (!postGroups.has(key)) {
+      postGroups.set(key, {
+        rep: post,
+        subs: new Set([post.subreddit]),
+        maxScore: post.score,
+        maxComments: post.num_comments,
+        key,
+      });
+      memberLookup.set(key, [post]);
+    } else {
+      const g = postGroups.get(key);
+      g.subs.add(post.subreddit);
+      if (post.score > g.rep.score) g.rep = post;
+      g.maxScore = Math.max(g.maxScore, post.score);
+      g.maxComments = Math.max(g.maxComments, post.num_comments);
+      memberLookup.get(key).push(post);
+    }
+  }
+
+  for (const group of postGroups.values()) {
+    const post = group.rep;
     const text = post.title + ' ' + post.selftext;
     const found = extractTickers(text);
     const postSentiment = scoreSentiment(text);
-    post.tickers = [...found.keys()];
-    post.sentiment = postSentiment;
-    post.ddScore = calculateDDScore(post);
+    const crossN = group.subs.size;
+    const mult = crosspostMultiplier(crossN);
+    const tickers = [...found.keys()];
+    const ddScore = calculateDDScore(post);
+
+    // Annotate all members of this group (fast lookup, no N×G scan)
+    const members = memberLookup.get(group.key) || [post];
+    for (const member of members) {
+      member.tickers = tickers;
+      member.sentiment = postSentiment;
+      member.ddScore = ddScore;
+      member.crossSubs = crossN;
+      member.crossMultiplier = mult;
+    }
 
     for (const [sym, weight] of found) {
       if (!tickerMap.has(sym)) {
@@ -2283,19 +2344,21 @@ async function performScan() {
         });
       }
       const t = tickerMap.get(sym);
-      t.mentions += 1;
-      t.weighted += weight;
+      t.mentions += 1 * mult;
+      t.weighted += weight * mult;
       t.posts.add(post.id);
-      t.score += post.score;
-      t.bull += postSentiment.bull;
-      t.bear += postSentiment.bear;
+      t.score += group.maxScore;
+      t.bull += postSentiment.bull * mult;
+      t.bear += postSentiment.bear * mult;
 
-      // First-seen tracking
       if (!STATE.tickerFirstSeen.has(sym)) {
         STATE.tickerFirstSeen.set(sym, { firstTs: nowTs });
       }
     }
   }
+
+  // Mentions can now be fractional (e.g. 1.3, 1.5). Round for display sanity
+  // but keep raw value for math. We'll round at render time only.
 
   STATE.posts = allPosts.sort((a, b) => b.created - a.created);
   STATE.tickers = tickerMap;
@@ -2540,7 +2603,7 @@ function renderTickersShort() {
         <div>${renderSparkline(t.symbol)}</div>
         <div class="price-cell">${priceHtml}</div>
         ${zHtml}
-        <div class="mentions-cell">${t.mentions}</div>
+        <div class="mentions-cell">${Math.round(t.mentions * 10) / 10}</div>
         <div class="sentiment-cell">
           <div class="sentiment-score ${sentClass}">${sentLabel}</div>
           <div class="sentiment-bar-mini">
@@ -2837,7 +2900,7 @@ function showTickerDetail(symbol) {
       <div>
         <div class="modal-title">$${symbol}</div>
         <div style="font-size: 11px; color: var(--text-dim); letter-spacing: 0.2em; margin-top: 4px; text-transform: uppercase;">
-          ${t.posts.size} posts · ${t.mentions} mentions · <span class="tier-badge tier-${tier}">${tier.toUpperCase()}</span>
+          ${t.posts.size} posts · ${Math.round(t.mentions * 10) / 10} mentions · <span class="tier-badge tier-${tier}">${tier.toUpperCase()}</span>
         </div>
       </div>
       <button class="modal-close" onclick="closeModal()">CLOSE ✕</button>
@@ -3318,6 +3381,12 @@ const HELP_CONTENT = {
         <div class="help-section-label">Why it matters more than raw count</div>
         <div class="help-section-body">
           Raw mentions are dominated by the same usual suspects (TSLA, NVDA, SPY). A z-score levels the field: a sleeper stock going from 1 mention to 8 lights up at <code>+3σ</code> even if NVDA has 50 mentions and a <code>0σ</code> score because that's just its normal volume.
+        </div>
+      </div>
+      <div class="help-section">
+        <div class="help-section-label">Crosspost handling</div>
+        <div class="help-section-body">
+          The same post by the same author crossposted to multiple subs counts as <strong>one mention</strong>, not N. A damped bonus applies for spread: 1 sub = 1.0×, 2 subs = 1.3×, 3 subs = 1.5×, 4+ = 1.7×. This is why mentions can show fractional values like <code>1.3</code> — that's one post that crossposted twice.
         </div>
       </div>
       <div class="help-section">
