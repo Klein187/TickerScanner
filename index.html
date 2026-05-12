@@ -1223,7 +1223,7 @@
         <span id="statusText">INITIALIZING</span>
       </div>
       <div class="status-item">LAST <strong id="lastScan">—</strong></div>
-      <div class="countdown">NEXT <span id="countdown">10:00</span></div>
+      <div class="countdown" onclick="showHelp('market-hours')" style="cursor: pointer;" title="Click for auto-scan schedule info"><span id="countdownLabel">NEXT</span> <span id="countdown">10:00</span></div>
     </div>
   </header>
 
@@ -1568,6 +1568,61 @@ const BASELINE_KEY = 'tickerscan_baselines_v3';
 const FIRSTSEEN_KEY = 'tickerscan_firstseen_v3';
 const MAX_HISTORY = 144;
 const PRICE_CACHE_MS = 5 * 60 * 1000;
+
+// ============================================================
+// MARKET HOURS — controls when auto-scanning runs
+// US market hours: 9:30am - 4:00pm ET, Monday-Friday
+// Auto-scan window: 1hr before open through 1hr after close
+//                   = 8:30am - 5:00pm ET, Mon-Fri (excluding holidays)
+// Outside this window, the timer stops; user can still scan manually.
+// ============================================================
+const MARKET_OPEN_HOUR_ET = 9;   // 9:30am ET = pre-open buffer starts 8:30am
+const MARKET_OPEN_MIN_ET = 30;
+const MARKET_CLOSE_HOUR_ET = 16; // 4:00pm ET = post-close buffer ends 5:00pm
+const MARKET_CLOSE_MIN_ET = 0;
+const BUFFER_HOURS = 1;
+
+// Convert a Date to ET (Eastern Time) parts. Handles DST automatically
+// because Intl handles the IANA timezone.
+function getETParts(date = new Date()) {
+  const fmt = new Intl.DateTimeFormat('en-US', {
+    timeZone: 'America/New_York',
+    weekday: 'short',
+    hour: 'numeric',
+    minute: 'numeric',
+    hour12: false,
+  });
+  const parts = fmt.formatToParts(date);
+  const get = (type) => parts.find(p => p.type === type)?.value;
+  return {
+    weekday: get('weekday'),        // 'Mon', 'Tue', ...
+    hour: parseInt(get('hour'), 10),
+    minute: parseInt(get('minute'), 10),
+  };
+}
+
+function isAutoScanWindow(date = new Date()) {
+  const { weekday, hour, minute } = getETParts(date);
+  // Weekend check
+  if (weekday === 'Sat' || weekday === 'Sun') return false;
+  // Convert times to minutes-since-midnight for easy comparison
+  const nowMin = hour * 60 + minute;
+  const openMin = MARKET_OPEN_HOUR_ET * 60 + MARKET_OPEN_MIN_ET - (BUFFER_HOURS * 60);
+  const closeMin = MARKET_CLOSE_HOUR_ET * 60 + MARKET_CLOSE_MIN_ET + (BUFFER_HOURS * 60);
+  return nowMin >= openMin && nowMin <= closeMin;
+}
+
+// Returns ms until the next time the auto-scan window opens.
+// Used to schedule a wakeup when market re-opens overnight/weekend.
+function msUntilNextWindow() {
+  // Walk forward minute by minute (cheap, never runs more than a few thousand iters)
+  const now = new Date();
+  for (let i = 1; i <= 60 * 24 * 4; i++) { // up to 4 days ahead
+    const test = new Date(now.getTime() + i * 60 * 1000);
+    if (isAutoScanWindow(test)) return i * 60 * 1000;
+  }
+  return null;
+}
 
 // ============================================================
 // PERSISTENCE
@@ -1962,9 +2017,13 @@ async function performScan() {
     .slice(0, 20);
 
   render();
-  setStatus('live', 'LIVE');
+  if (isAutoScanWindow()) {
+    setStatus('live', 'LIVE');
+  } else {
+    setStatus('idle', 'MANUAL · MARKET CLOSED');
+  }
   STATE.scanning = false;
-  STATE.nextScanAt = Date.now() + SCAN_INTERVAL_MS;
+  // Note: nextScanAt is set by scheduleNextScan() — don't overwrite here.
 
   Promise.all(topTickers.map(t => fetchPrice(t.symbol))).then(() => render());
 }
@@ -2889,6 +2948,36 @@ const HELP_CONTENT = {
       </div>
     `,
   },
+  'market-hours': {
+    title: 'Auto-Scan Schedule',
+    tag: 'Market-aware timing',
+    body: `
+      <div class="help-section">
+        <div class="help-section-label">When it auto-scans</div>
+        <div class="help-section-body">
+          Every 10 minutes during the active window: <strong>8:30am - 5:00pm ET, Mon-Fri</strong>. That's 1 hour before market open through 1 hour after close — capturing pre-market chatter and after-hours reactions to news.
+        </div>
+      </div>
+      <div class="help-section">
+        <div class="help-section-label">When it doesn't</div>
+        <div class="help-section-body">
+          Overnight, weekends, and outside the buffer window, auto-scanning stops. The countdown switches to show when the market reopens (e.g. <code>OPENS 14h 23m</code>). You can still tap <strong>SCAN NOW</strong> anytime to manually refresh.
+        </div>
+      </div>
+      <div class="help-section">
+        <div class="help-section-label">Why</div>
+        <div class="help-section-body">
+          Reddit chatter outside trading hours is mostly noise and weekend memes. Skipping those scans saves CORS proxy rate limits, keeps your z-score baselines tighter to actual trading activity, and avoids running down your phone battery if installed as a PWA.
+        </div>
+      </div>
+      <div class="help-section">
+        <div class="help-section-label">Status indicator</div>
+        <div class="help-section-body">
+          When closed, the status pulse goes amber (MANUAL · MARKET CLOSED). Inside the window, it stays green (LIVE). Doesn't track market holidays — those days will show normal countdowns but no special data anyway.
+        </div>
+      </div>
+    `,
+  },
   'subs': {
     title: 'Subreddit Selection',
     tag: 'Tune your data source',
@@ -3118,12 +3207,42 @@ function setStatus(type, text) {
   document.getElementById('statusText').textContent = text;
 }
 function updateCountdown() {
-  if (!STATE.nextScanAt) { document.getElementById('countdown').textContent = '—'; return; }
+  const el = document.getElementById('countdown');
+  const labelEl = document.getElementById('countdownLabel');
+  const inWindow = isAutoScanWindow();
+
+  // Toggle the surrounding "NEXT" label to "MARKET OPENS" when closed
+  if (labelEl) {
+    labelEl.textContent = inWindow ? 'NEXT' : 'MARKET';
+  }
+
+  if (!STATE.nextScanAt) {
+    el.textContent = inWindow ? '—' : 'CLOSED';
+    return;
+  }
   const remaining = Math.max(0, STATE.nextScanAt - Date.now());
+
+  if (!inWindow) {
+    // Show a longer-form countdown: days/hours/mins until market reopens
+    const totalMins = Math.floor(remaining / 60000);
+    if (totalMins < 60) {
+      el.textContent = `OPENS ${totalMins}m`;
+    } else if (totalMins < 60 * 24) {
+      const hrs = Math.floor(totalMins / 60);
+      const mins = totalMins % 60;
+      el.textContent = `OPENS ${hrs}h ${String(mins).padStart(2, '0')}m`;
+    } else {
+      const days = Math.floor(totalMins / (60 * 24));
+      const hrs = Math.floor((totalMins % (60 * 24)) / 60);
+      el.textContent = `OPENS ${days}d ${hrs}h`;
+    }
+    return;
+  }
+
+  // In-window: regular mm:ss countdown
   const mins = Math.floor(remaining / 60000);
   const secs = Math.floor((remaining % 60000) / 1000);
-  document.getElementById('countdown').textContent =
-    `${String(mins).padStart(2, '0')}:${String(secs).padStart(2, '0')}`;
+  el.textContent = `${String(mins).padStart(2, '0')}:${String(secs).padStart(2, '0')}`;
 }
 
 function renderSubPills() {
@@ -3183,8 +3302,10 @@ function applyPreset(presetId) {
   // Re-render the affected ticker list with new sort
   if (STATE.currentView === 'short') renderTickersShort();
   else renderTickersLong();
-  // Kick off an immediate scan with the new sub set
-  performScan();
+  // Kick off an immediate scan with the new sub set, then reschedule
+  performScan().then(() => {
+    if (typeof scheduleNextScan === 'function') scheduleNextScan();
+  });
 }
 
 function renderPresetPills() {
@@ -3215,7 +3336,13 @@ function renderSortPills(containerId, options, currentKey, onClick) {
 // ============================================================
 // INIT
 // ============================================================
-document.getElementById('scanNowBtn').addEventListener('click', () => performScan());
+document.getElementById('scanNowBtn').addEventListener('click', async () => {
+  await performScan();
+  // Reset the auto-scan timer so the next one is 10 min from now
+  // (or stays "OPENS in X" if market closed). scheduleNextScan is defined below
+  // in init order, so it may not exist yet on first click — guard with typeof.
+  if (typeof scheduleNextScan === 'function') scheduleNextScan();
+});
 document.getElementById('clearHistoryBtn').addEventListener('click', () => {
   if (confirm('Clear all stored history, baselines, and persistence data?')) {
     STATE.history = [];
@@ -3263,7 +3390,42 @@ function rerenderSortPills() {
 rerenderSortPills();
 
 performScan();
-STATE.refreshInterval = setInterval(performScan, SCAN_INTERVAL_MS);
+
+// ============================================================
+// MARKET-HOURS-AWARE AUTO-SCAN SCHEDULER
+// Inside the window: scan every 10 min.
+// Outside the window: don't auto-scan. Set a timer to wake up when
+//                     the window opens again.
+// Re-evaluates after every scan so DST/weekend transitions are handled.
+// ============================================================
+function scheduleNextScan() {
+  // Clear any existing timer
+  if (STATE.refreshInterval) {
+    clearTimeout(STATE.refreshInterval);
+    STATE.refreshInterval = null;
+  }
+
+  if (isAutoScanWindow()) {
+    // We're in the window — schedule next scan in 10 minutes
+    STATE.nextScanAt = Date.now() + SCAN_INTERVAL_MS;
+    STATE.refreshInterval = setTimeout(async () => {
+      await performScan();
+      scheduleNextScan(); // re-evaluate after each scan
+    }, SCAN_INTERVAL_MS);
+  } else {
+    // Outside the window — schedule a wakeup for when it next opens
+    const msUntil = msUntilNextWindow();
+    STATE.nextScanAt = msUntil ? Date.now() + msUntil : null;
+    if (msUntil !== null) {
+      STATE.refreshInterval = setTimeout(async () => {
+        await performScan();
+        scheduleNextScan();
+      }, msUntil);
+    }
+  }
+}
+
+scheduleNextScan();
 STATE.countdownInterval = setInterval(updateCountdown, 1000);
 
 window.showTickerDetail = showTickerDetail;
