@@ -750,17 +750,20 @@
     letter-spacing: 0.02em;
     z-index: 1000;
     opacity: 0;
+    visibility: hidden;
     pointer-events: none;
     transition: opacity 0.12s ease;
     text-align: left;
     font-weight: 400;
     text-transform: none;
-    /* hidden by default until JS positions it */
-    top: -9999px;
-    left: -9999px;
+    /* Stays in normal position when hidden so dimensions are measurable.
+       visibility:hidden prevents interaction; opacity:0 hides visually. */
+    top: 0;
+    left: 0;
   }
   #floatingTooltip.visible {
     opacity: 1;
+    visibility: visible;
   }
   #floatingTooltip::after {
     content: '';
@@ -2632,75 +2635,97 @@ function showTickerDetail(symbol) {
 
 // ============================================================
 // FLOATING TOOLTIP SYSTEM
-// One shared tooltip element appended to body. Avoids any clipping by
-// modal overflow or stacking-context issues. Positioned via JS so it
-// always fits on screen regardless of where the trigger is.
+// Strategy:
+// - Single tooltip element appended to <body> (escapes overflow clipping)
+// - position: fixed, placed via JS measurement
+// - Force synchronous layout (offsetHeight) before measuring tooltip
+//   dimensions so we always get real values, not zeros
+// - One document-level outside-click handler installed at boot
+// - Suppress outside-click for ONE event tick after open (iOS event-flow
+//   was bubbling the same tap to document, instantly dismissing)
 // ============================================================
-let tipHideTimer = null;
 let activeTipTrigger = null;
+let tipHideTimer = null;
+let tipJustOpened = false;
 
 function positionTooltip(trigger) {
   const tip = document.getElementById('floatingTooltip');
-  if (!tip) return;
+  if (!tip || !trigger) return;
 
-  const rect = trigger.getBoundingClientRect();
+  // Force layout so the tooltip has actual dimensions to measure
+  // (CSS sets width: 240px, so width is known, but height depends on content)
+  void tip.offsetHeight;
+
+  const triggerRect = trigger.getBoundingClientRect();
   const tipRect = tip.getBoundingClientRect();
   const vw = window.innerWidth;
   const vh = window.innerHeight;
   const margin = 8;
-  const gap = 10; // space between trigger and tooltip
+  const gap = 10;
 
-  // Decide vertical placement: above by default, below if not enough room
-  const spaceAbove = rect.top;
-  const spaceBelow = vh - rect.bottom;
-  const placeAbove = spaceAbove >= tipRect.height + gap + margin || spaceAbove > spaceBelow;
+  // Use the *intended* width even if rect comes back narrower
+  const tipWidth = Math.max(tipRect.width, 240);
+  const tipHeight = tipRect.height;
+
+  // Decide vertical: prefer above unless cramped
+  const spaceAbove = triggerRect.top - margin;
+  const spaceBelow = vh - triggerRect.bottom - margin;
+  let placeAbove = spaceAbove >= tipHeight + gap;
+  // If neither side has enough room, use whichever has more
+  if (!placeAbove && spaceBelow < tipHeight + gap) {
+    placeAbove = spaceAbove > spaceBelow;
+  }
 
   let top;
   if (placeAbove) {
-    top = rect.top - tipRect.height - gap;
+    top = triggerRect.top - tipHeight - gap;
     tip.classList.add('above');
     tip.classList.remove('below');
   } else {
-    top = rect.bottom + gap;
+    top = triggerRect.bottom + gap;
     tip.classList.add('below');
     tip.classList.remove('above');
   }
+  // Clamp vertically so it can't render off-screen
+  top = Math.max(margin, Math.min(top, vh - tipHeight - margin));
 
-  // Horizontal: try to center on trigger, clamp to viewport
-  const triggerCenter = rect.left + rect.width / 2;
-  let left = triggerCenter - tipRect.width / 2;
-  left = Math.max(margin, Math.min(left, vw - tipRect.width - margin));
+  // Horizontal: center on trigger, clamp to viewport
+  const triggerCenter = triggerRect.left + triggerRect.width / 2;
+  let left = triggerCenter - tipWidth / 2;
+  left = Math.max(margin, Math.min(left, vw - tipWidth - margin));
 
-  // Position arrow to point at trigger center
+  // Arrow points at trigger center, relative to tooltip
   const arrowX = triggerCenter - left;
-  tip.style.setProperty('--arrow-x', `${Math.max(12, Math.min(arrowX, tipRect.width - 12))}px`);
+  tip.style.setProperty('--arrow-x', `${Math.max(14, Math.min(arrowX, tipWidth - 14))}px`);
 
-  tip.style.top = `${top}px`;
-  tip.style.left = `${left}px`;
+  tip.style.top = `${Math.round(top)}px`;
+  tip.style.left = `${Math.round(left)}px`;
 }
 
 function showStatTooltip(trigger) {
   const tip = document.getElementById('floatingTooltip');
   if (!tip) return;
 
-  // Cancel any pending hide
   if (tipHideTimer) { clearTimeout(tipHideTimer); tipHideTimer = null; }
 
-  // Find the tooltip content stored in a child .stat-tooltip div
   const contentEl = trigger.querySelector('.stat-tooltip');
   if (!contentEl) return;
 
   tip.innerHTML = contentEl.innerHTML;
   activeTipTrigger = trigger;
 
-  // Two-pass positioning: first set visible to get correct dimensions,
-  // then position. Otherwise getBoundingClientRect on the tooltip
-  // returns 0 because it was at -9999px.
-  tip.style.top = '0px';
-  tip.style.left = '0px';
+  // Make visible first (so we can measure), then position
   tip.classList.add('visible');
-  // Use requestAnimationFrame to allow layout to settle
+  // Inline content render + reflow before positioning
+  positionTooltip(trigger);
+  // Position one more time after the browser finishes paint, in case
+  // fonts/images shifted dimensions
   requestAnimationFrame(() => positionTooltip(trigger));
+
+  // Set the flag for one tick so the document handler ignores
+  // the same tap event that just triggered us
+  tipJustOpened = true;
+  setTimeout(() => { tipJustOpened = false; }, 0);
 }
 
 function hideStatTooltip(immediate = false) {
@@ -2708,31 +2733,49 @@ function hideStatTooltip(immediate = false) {
   if (!tip) return;
   if (immediate) {
     tip.classList.remove('visible', 'above', 'below');
-    tip.style.top = '-9999px';
-    tip.style.left = '-9999px';
     activeTipTrigger = null;
+    if (tipHideTimer) { clearTimeout(tipHideTimer); tipHideTimer = null; }
   } else {
-    // Small delay so moving from trigger to tooltip doesn't flicker on desktop
-    tipHideTimer = setTimeout(() => hideStatTooltip(true), 80);
+    if (tipHideTimer) clearTimeout(tipHideTimer);
+    tipHideTimer = setTimeout(() => hideStatTooltip(true), 100);
   }
+}
+
+// Install document-level outside-tap handler ONCE at boot.
+// (Previously this was inside wireStatTooltips, which got re-run every
+// time the modal opened, stacking up multiple handlers.)
+function installTooltipDocumentHandler() {
+  document.addEventListener('click', (e) => {
+    if (!activeTipTrigger) return;
+    if (tipJustOpened) return; // ignore the same tap that opened us
+    // Click on the current trigger or on its content — keep open
+    if (activeTipTrigger.contains(e.target)) return;
+    // Click inside the tooltip itself — keep open
+    const tip = document.getElementById('floatingTooltip');
+    if (tip && tip.contains(e.target)) return;
+    // Click on a different modal-stat — let that stat's handler take over,
+    // don't dismiss here
+    const otherStat = e.target.closest && e.target.closest('.modal-stat');
+    if (otherStat && otherStat !== activeTipTrigger) return;
+    hideStatTooltip(true);
+  });
+
+  window.addEventListener('resize', () => {
+    if (activeTipTrigger) positionTooltip(activeTipTrigger);
+  });
+  // Reposition on any scroll (modal or window)
+  window.addEventListener('scroll', () => {
+    if (activeTipTrigger) positionTooltip(activeTipTrigger);
+  }, { passive: true, capture: true });
 }
 
 function wireStatTooltips() {
   const stats = document.querySelectorAll('#modalContent .modal-stat');
-  // Detect touch capability: if available, use tap-to-toggle.
-  // On hybrid devices (iPad with mouse), both will work.
-  const hasTouch = 'ontouchstart' in window || navigator.maxTouchPoints > 0;
-
   stats.forEach(stat => {
-    // Desktop hover
-    stat.addEventListener('mouseenter', () => {
-      showStatTooltip(stat);
-    });
-    stat.addEventListener('mouseleave', () => {
-      hideStatTooltip();
-    });
-
-    // Click / tap — toggles, works for both desktop click and mobile tap
+    // Desktop: hover
+    stat.addEventListener('mouseenter', () => showStatTooltip(stat));
+    stat.addEventListener('mouseleave', () => hideStatTooltip(false));
+    // Mobile + desktop click: toggle
     stat.addEventListener('click', (e) => {
       e.stopPropagation();
       if (activeTipTrigger === stat) {
@@ -2742,30 +2785,10 @@ function wireStatTooltips() {
       }
     });
   });
-
-  // Reposition on scroll inside modal (tooltip is fixed, trigger scrolls)
-  const modalScrollEl = document.getElementById('modalContent');
-  if (modalScrollEl) {
-    const scrollHandler = () => {
-      if (activeTipTrigger) positionTooltip(activeTipTrigger);
-    };
-    modalScrollEl.addEventListener('scroll', scrollHandler, { passive: true });
-  }
-
-  // Tap anywhere else (or scroll the window) dismisses the tooltip on mobile
-  document.addEventListener('click', (e) => {
-    if (!activeTipTrigger) return;
-    const tip = document.getElementById('floatingTooltip');
-    if (e.target === activeTipTrigger || activeTipTrigger.contains(e.target)) return;
-    if (tip && (e.target === tip || tip.contains(e.target))) return;
-    hideStatTooltip(true);
-  });
-
-  // Keep tooltip in sync if window resizes
-  window.addEventListener('resize', () => {
-    if (activeTipTrigger) positionTooltip(activeTipTrigger);
-  });
 }
+
+// Boot the document handler exactly once
+installTooltipDocumentHandler();
 
 function renderBigChart(data, color) {
   if (data.length < 2) return '<div style="color: var(--text-dim); font-size: 11px; padding: 40px 0; text-align: center;">Need more scans for chart</div>';
