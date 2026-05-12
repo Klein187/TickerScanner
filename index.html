@@ -405,7 +405,7 @@
   /* SHORT-TERM ticker row */
   .ticker-row-short {
     display: grid;
-    grid-template-columns: 36px 100px 1fr 80px 70px 70px 60px;
+    grid-template-columns: 36px 130px 1fr 80px 70px 70px 60px;
     align-items: center;
     padding: 10px 14px;
     border-bottom: 1px solid var(--border);
@@ -417,7 +417,7 @@
 
   .ticker-header-short {
     display: grid;
-    grid-template-columns: 36px 100px 1fr 80px 70px 70px 60px;
+    grid-template-columns: 36px 130px 1fr 80px 70px 70px 60px;
     padding: 8px 14px;
     border-bottom: 1px solid var(--border);
     gap: 10px;
@@ -495,6 +495,27 @@
   .tier-momentum { background: rgba(251, 191, 36, 0.15); color: var(--amber); border: 1px solid rgba(251, 191, 36, 0.3); }
   .tier-quality { background: rgba(96, 165, 250, 0.15); color: var(--blue); border: 1px solid rgba(96, 165, 250, 0.3); }
   .tier-research { background: rgba(167, 139, 250, 0.15); color: var(--purple); border: 1px solid rgba(167, 139, 250, 0.3); }
+
+  /* Inline tier badge — sits next to the ticker symbol on the short-term page.
+     Smaller than the long-term variant, with hover/tap state and pointer
+     cursor since it's interactive (opens a tooltip explaining tiers). */
+  .ticker-symbol-row {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    min-width: 0;
+  }
+  .tier-badge-inline {
+    margin-top: 0;
+    font-family: inherit;
+    cursor: help;
+    transition: filter 0.15s ease, transform 0.15s ease;
+    flex-shrink: 0;
+  }
+  .tier-badge-inline:hover {
+    filter: brightness(1.4);
+    transform: scale(1.05);
+  }
 
   .sparkline { width: 100%; height: 28px; }
 
@@ -1379,6 +1400,9 @@
     .ticker-symbol { font-size: 14px; }
     .ticker-meta { font-size: 9px; }
     .price { font-size: 12px; }
+    /* On mobile, allow tier badge to drop below the symbol if there's no room */
+    .ticker-symbol-row { flex-wrap: wrap; gap: 4px; }
+    .tier-badge-inline { font-size: 7px; padding: 1px 4px; }
     .price-change { font-size: 9px; }
     .mentions-cell { font-size: 14px; }
     .sentiment-score { font-size: 11px; }
@@ -2643,7 +2667,13 @@ function renderTickersShort() {
       <div class="ticker-row-short" onclick="showTickerDetail('${t.symbol}')">
         <div class="rank">#${String(idx + 1).padStart(2, '0')}</div>
         <div class="ticker-info">
-          <div class="ticker-symbol">$${t.symbol}</div>
+          <div class="ticker-symbol-row">
+            <span class="ticker-symbol">$${t.symbol}</span>
+            ${(() => {
+              const tier = getTier(t.symbol);
+              return `<button class="tier-badge tier-badge-inline tier-${tier}" data-tier-tip="${tier}" onclick="event.stopPropagation(); showTierTooltip(event.currentTarget, '${tier}')">${tier.toUpperCase()}</button>`;
+            })()}
+          </div>
           <div class="ticker-meta">${t.posts.size}P · ${(t.score / 1000).toFixed(1)}k</div>
           ${delta ? `<div class="delta ${deltaClass}">${delta}</div>` : ''}
         </div>
@@ -3305,6 +3335,120 @@ function wireStatTooltips() {
 
 // Boot the document handler exactly once
 installTooltipDocumentHandler();
+
+// ============================================================
+// TIER BADGE TOOLTIPS — reuses the floating tooltip system but content is
+// generated from a small data structure so we can wire up dynamically-rendered
+// badges (created/destroyed every scan). Behavior matches the modal stat
+// tooltips: tap on iOS, hover on desktop.
+// ============================================================
+const TIER_INFO = {
+  meme: {
+    title: 'Meme Tier',
+    accent: 'var(--red)',
+    summary: 'Mostly r/wallstreetbets, r/options, r/pennystocks chatter.',
+    detail: 'High-volume, low-substance retail flow. Often the source of squeeze plays and 0DTE gamma ramps. Good for short-term momentum trades, bad for thesis-building. Treat tickers here as <strong>vol plays</strong>, not investments.',
+  },
+  momentum: {
+    title: 'Momentum Tier',
+    accent: 'var(--amber)',
+    summary: 'r/stocks, r/StockMarket — broader retail with mixed quality.',
+    detail: 'The median retail discussion zone. Less reckless than WSB, less rigorous than research subs. Tickers here are usually <strong>news-driven moves</strong> — earnings, M&amp;A rumors, sector rotation chatter.',
+  },
+  quality: {
+    title: 'Quality Tier',
+    accent: 'var(--blue)',
+    summary: 'r/investing, r/dividends — long-term retail focus.',
+    detail: 'Buy-and-hold-oriented community. Tickers here trend toward <strong>blue chips, dividend stocks, broad ETFs</strong>. Useful when looking for swing trades with fundamentals backing them.',
+  },
+  research: {
+    title: 'Research Tier',
+    accent: 'var(--purple)',
+    summary: 'r/SecurityAnalysis, r/ValueInvesting — deep DD writers.',
+    detail: 'Smallest crowd, highest signal-to-noise. When a ticker shows up here it usually means someone wrote a <strong>several-thousand-word thesis</strong> with financials, comparables, and a price target. Best lead source for position trades.',
+  },
+};
+
+function buildTierTooltipHtml(activeTier) {
+  const info = TIER_INFO[activeTier];
+  if (!info) return '';
+  // Show all four tiers but highlight the active one
+  const tierOrder = ['meme', 'momentum', 'quality', 'research'];
+  return `
+    <div class="stat-tooltip-title" style="color: ${info.accent};">${info.title}</div>
+    <div class="stat-tooltip-body">
+      ${info.detail}
+      <div style="margin-top: 8px; padding-top: 8px; border-top: 1px solid var(--border); font-size: 10px;">
+        <strong style="color: var(--text-bright);">All four tiers:</strong>
+        ${tierOrder.map(t => {
+          const i = TIER_INFO[t];
+          const active = t === activeTier;
+          return `<div style="margin-top: 4px; opacity: ${active ? '1' : '0.6'};">
+            <span class="tier-badge tier-${t}" style="margin: 0; font-size: 8px;">${t.toUpperCase()}</span>
+            <span style="color: var(--text-dim); font-size: 10px;"> ${i.summary}</span>
+          </div>`;
+        }).join('')}
+      </div>
+    </div>
+  `;
+}
+
+// Global touch tracking for tier badges (same iOS pattern as modal stats)
+let tierTouchInFlight = false;
+let tierTouchTimer = null;
+function noteTierTouch() {
+  tierTouchInFlight = true;
+  if (tierTouchTimer) clearTimeout(tierTouchTimer);
+  tierTouchTimer = setTimeout(() => { tierTouchInFlight = false; }, 600);
+}
+
+function showTierTooltip(triggerEl, tier) {
+  const tip = document.getElementById('floatingTooltip');
+  if (!tip || !triggerEl) return;
+
+  if (tipHideTimer) { clearTimeout(tipHideTimer); tipHideTimer = null; }
+
+  // If clicking the same badge that's already showing, dismiss instead
+  if (activeTipTrigger === triggerEl) {
+    hideStatTooltip(true);
+    return;
+  }
+
+  tip.innerHTML = buildTierTooltipHtml(tier);
+  activeTipTrigger = triggerEl;
+  tip.classList.add('visible');
+  positionTooltip(triggerEl);
+  requestAnimationFrame(() => positionTooltip(triggerEl));
+
+  tipJustOpened = true;
+  setTimeout(() => { tipJustOpened = false; }, 0);
+}
+
+// Wire desktop hover for tier badges. Click handler is inline in the row HTML
+// (set up at render time via onclick). For touch devices, the click handler
+// double-serves — tap toggles open/close.
+document.addEventListener('mouseover', (e) => {
+  if (tierTouchInFlight) return;
+  const badge = e.target.closest && e.target.closest('.tier-badge-inline');
+  if (!badge) return;
+  const tier = badge.dataset.tierTip;
+  if (!tier) return;
+  showTierTooltip(badge, tier);
+});
+document.addEventListener('mouseout', (e) => {
+  if (tierTouchInFlight) return;
+  const badge = e.target.closest && e.target.closest('.tier-badge-inline');
+  if (!badge) return;
+  // Schedule hide; if user moves to another badge mouseover will cancel via showStatTooltip
+  hideStatTooltip(false);
+});
+document.addEventListener('touchstart', (e) => {
+  if (e.target.closest && e.target.closest('.tier-badge-inline')) {
+    noteTierTouch();
+  }
+}, { passive: true });
+
+window.showTierTooltip = showTierTooltip;
 
 function renderBigChart(data, color) {
   if (data.length < 2) return '<div style="color: var(--text-dim); font-size: 11px; padding: 40px 0; text-align: center;">Need more scans for chart</div>';
