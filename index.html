@@ -1646,7 +1646,6 @@
     <div class="control-group">
       <label>Actions</label>
       <div style="display: flex; gap: 8px;">
-        <button class="btn" id="scanNowBtn">SCAN NOW</button>
         <button class="btn secondary" id="clearHistoryBtn">CLEAR HIST</button>
       </div>
     </div>
@@ -2003,6 +2002,10 @@ const HISTORY_KEY = 'tickerscan_history_v3';
 // counts. Without a reset, z-scores would be artificially low for ~10 scans.
 const BASELINE_KEY = 'tickerscan_baselines_v4';
 const FIRSTSEEN_KEY = 'tickerscan_firstseen_v3';
+// Snapshot of the last full scan (tickers map + posts + dd posts).
+// Lets the page render its last state instantly on reload, instead of
+// requiring a fresh fetch every visit.
+const SNAPSHOT_KEY = 'tickerscan_snapshot_v1';
 const MAX_HISTORY = 144;
 const PRICE_CACHE_MS = 5 * 60 * 1000;
 
@@ -2072,6 +2075,40 @@ function loadState() {
     if (base) STATE.tickerBaselines = new Map(JSON.parse(base));
     const fs = localStorage.getItem(FIRSTSEEN_KEY);
     if (fs) STATE.tickerFirstSeen = new Map(JSON.parse(fs));
+
+    // Restore last scan time so reload doesn't always trigger an immediate scan.
+    const lst = localStorage.getItem('tickerscan_lastscan_v1');
+    if (lst) {
+      const ts = parseInt(lst, 10);
+      if (!isNaN(ts)) STATE.lastScanTime = new Date(ts);
+    } else if (STATE.history.length > 0) {
+      const lastSnap = STATE.history[STATE.history.length - 1];
+      if (lastSnap?.ts) STATE.lastScanTime = new Date(lastSnap.ts);
+    }
+
+    // Restore the full last-scan snapshot if present — gives instant render
+    // on page load with the same data the user saw last time.
+    const snap = localStorage.getItem(SNAPSHOT_KEY);
+    if (snap) {
+      const data = JSON.parse(snap);
+      if (data.tickers) {
+        const map = new Map();
+        for (const t of data.tickers) {
+          map.set(t.symbol, {
+            symbol: t.symbol,
+            mentions: t.mentions || 0,
+            weighted: t.weighted || 0,
+            posts: new Set(t.postIds || []),
+            score: t.score || 0,
+            bull: t.bull || 0,
+            bear: t.bear || 0,
+          });
+        }
+        STATE.tickers = map;
+      }
+      if (Array.isArray(data.posts)) STATE.posts = data.posts;
+      if (Array.isArray(data.ddPosts)) STATE.ddPosts = data.ddPosts;
+    }
   } catch (e) {}
 }
 function saveState() {
@@ -2080,6 +2117,25 @@ function saveState() {
     localStorage.setItem(HISTORY_KEY, JSON.stringify(STATE.history));
     localStorage.setItem(BASELINE_KEY, JSON.stringify([...STATE.tickerBaselines]));
     localStorage.setItem(FIRSTSEEN_KEY, JSON.stringify([...STATE.tickerFirstSeen]));
+    if (STATE.lastScanTime) {
+      localStorage.setItem('tickerscan_lastscan_v1', String(STATE.lastScanTime.getTime()));
+    }
+    // Full snapshot — replace each scan, not cumulative. Cap posts to keep
+    // localStorage from blowing up.
+    const snapshot = {
+      tickers: [...STATE.tickers.values()].map(t => ({
+        symbol: t.symbol,
+        mentions: t.mentions,
+        weighted: t.weighted,
+        postIds: [...t.posts],
+        score: t.score,
+        bull: t.bull,
+        bear: t.bear,
+      })),
+      posts: (STATE.posts || []).slice(0, 50),
+      ddPosts: (STATE.ddPosts || []).slice(0, 20),
+    };
+    localStorage.setItem(SNAPSHOT_KEY, JSON.stringify(snapshot));
   } catch (e) {}
 }
 
@@ -2555,7 +2611,7 @@ async function performScan() {
   if (!anySuccess) {
     setStatus('error', 'FETCH FAILED');
     document.getElementById('tickerListShort').innerHTML =
-      '<div class="error">// REDDIT FETCH BLOCKED //<br><br>All proxy services are down or rate-limited. This usually clears up within a few minutes. Tap SCAN NOW to retry.</div>';
+      '<div class="error">// REDDIT FETCH BLOCKED //<br><br>All proxy services are down or rate-limited. The next auto-scan will retry in a few minutes.</div>';
     STATE.scanning = false;
     return;
   }
@@ -2681,13 +2737,14 @@ async function performScan() {
     .slice(0, ALL_TICKER_PRICE_CAP);
 
   render();
+  // Status indicator reflects market state, not scanner state. Scanner runs
+  // 24/7 now, but the user still wants to know if the market itself is open.
   if (isAutoScanWindow()) {
-    setStatus('live', 'LIVE');
+    setStatus('live', 'LIVE · MARKET OPEN');
   } else {
-    setStatus('idle', 'MANUAL · MARKET CLOSED');
+    setStatus('idle', 'LIVE · MARKET CLOSED');
   }
   STATE.scanning = false;
-  // Note: nextScanAt is set by scheduleNextScan() — don't overwrite here.
 
   // Batched price fetch — one HTTP request per batch of 25 symbols, fired
   // in parallel. For a typical 50-ticker scan that's 2 requests.
@@ -4290,36 +4347,30 @@ const HELP_CONTENT = {
   },
   'market-hours': {
     title: 'Auto-Scan Schedule',
-    tag: 'Market-aware timing',
+    tag: 'Clock-aligned 10-min cadence',
     body: `
       <div class="help-section">
-        <div class="help-section-label">When it auto-scans</div>
+        <div class="help-section-label">How often it scans</div>
         <div class="help-section-body">
-          Every 10 minutes during the active window: <strong>8:30am - 5:00pm ET, Mon-Fri</strong>. That's 1 hour before market open through 1 hour after close — capturing pre-market chatter and after-hours reactions to news.
-        </div>
-      </div>
-      <div class="help-section">
-        <div class="help-section-label">When it doesn't</div>
-        <div class="help-section-body">
-          Overnight, weekends, and outside the buffer window, auto-scanning stops. You can still tap <strong>SCAN NOW</strong> anytime to manually refresh.
+          Every 10 minutes, 24/7, locked to clock-aligned boundaries: <strong>:00, :10, :20, :30, :40, :50</strong> past each hour. Scans happen overnight, weekends, holidays — Reddit chatter doesn't sleep, so neither does the scanner.
         </div>
       </div>
       <div class="help-section">
         <div class="help-section-label">Countdown timer</div>
         <div class="help-section-body">
-          The "OPENS" countdown targets the actual market open at <strong>9:30am ET</strong> — not when the scanner technically resumes (8:30am ET). The displayed local time matches the real opening bell, so you can pre-position trades against it. The scanner is already running quietly an hour earlier so pre-market chatter shows up the moment you open the app at 9:30.
+          The <strong>NEXT</strong> indicator shows time until the next clock-aligned scan, plus the actual local time it'll fire (e.g. <code>04:32 · 1:40 AM</code>). All devices running this app fire scans at exactly the same wall-clock moments.
         </div>
       </div>
       <div class="help-section">
-        <div class="help-section-label">Why</div>
+        <div class="help-section-label">Page-load behavior</div>
         <div class="help-section-body">
-          Reddit chatter outside trading hours is mostly noise and weekend memes. Skipping those scans saves CORS proxy rate limits, keeps your z-score baselines tighter to actual trading activity, and avoids running down your phone battery if installed as a PWA.
+          Opening the page does <strong>not</strong> trigger a fresh scan if cached data is less than 10 minutes old — you see what the last scan found, then wait for the next clock boundary. If the cache is stale (page sat idle, or first visit), a scan fires immediately.
         </div>
       </div>
       <div class="help-section">
         <div class="help-section-label">Status indicator</div>
         <div class="help-section-body">
-          When closed, the status pulse goes amber (MANUAL · MARKET CLOSED). Inside the window, it stays green (LIVE). Doesn't track market holidays — those days will show normal countdowns but no fresh data on the day itself.
+          Green <strong>LIVE · MARKET OPEN</strong> during US trading hours (8:30am - 5:00pm ET, Mon-Fri). Amber <strong>LIVE · MARKET CLOSED</strong> outside that — but scanning continues. This is purely informational about market state.
         </div>
       </div>
     `,
@@ -4632,61 +4683,32 @@ function nextMarketOpen(now = new Date()) {
 }
 
 function updateCountdown() {
+  // Always shows time until the next clock-aligned auto-scan. No market-state
+  // branching anymore — scans run 24/7 on the same 10-min cadence.
   const el = document.getElementById('countdown');
   const labelEl = document.getElementById('countdownLabel');
-  const inWindow = isAutoScanWindow();
   const now = Date.now();
 
   if (labelEl) {
-    labelEl.textContent = inWindow ? 'NEXT' : 'OPENS';
+    labelEl.textContent = 'NEXT';
   }
 
-  if (inWindow) {
-    // In-window: use the scheduler's nextScanAt for the 10-min countdown.
-    // (Falls back to "—" if not yet scheduled.)
-    if (!STATE.nextScanAt) {
-      el.textContent = '—';
-      return;
-    }
-    const remaining = Math.max(0, STATE.nextScanAt - now);
-    const mins = Math.floor(remaining / 60000);
-    const secs = Math.floor((remaining % 60000) / 1000);
-    el.textContent = `${String(mins).padStart(2, '0')}:${String(secs).padStart(2, '0')}`;
+  if (!STATE.nextScanAt) {
+    el.textContent = '—';
     return;
   }
+  const remaining = Math.max(0, STATE.nextScanAt - now);
+  const mins = Math.floor(remaining / 60000);
+  const secs = Math.floor((remaining % 60000) / 1000);
 
-  // Out-of-window: compute fresh from current time each tick.
-  // This is self-correcting — doesn't matter if the scheduler timer is stale.
-  // Target is the actual market open (9:30am ET), not when scanning resumes.
-  const openMoment = nextMarketOpen(new Date(now));
-  if (!openMoment) {
-    el.textContent = 'CLOSED';
-    return;
-  }
-  const remaining = openMoment.getTime() - now;
-  const totalMins = Math.floor(remaining / 60000);
-
-  // Friendly format with the actual local time of next open
-  // (so user can verify "yes, 8:30am ET tomorrow" matches their expectation)
-  const localTimeStr = openMoment.toLocaleTimeString([], {
+  // Display target time alongside the countdown so the user can verify
+  // "next scan at 1:30 AM" matches expectation
+  const targetTime = new Date(STATE.nextScanAt).toLocaleTimeString([], {
     hour: 'numeric',
     minute: '2-digit',
     hour12: true,
   });
-
-  let countdownStr;
-  if (totalMins < 60) {
-    countdownStr = `${totalMins}m`;
-  } else if (totalMins < 60 * 24) {
-    const hrs = Math.floor(totalMins / 60);
-    const mins = totalMins % 60;
-    countdownStr = `${hrs}h ${String(mins).padStart(2, '0')}m`;
-  } else {
-    const days = Math.floor(totalMins / (60 * 24));
-    const hrs = Math.floor((totalMins % (60 * 24)) / 60);
-    countdownStr = `${days}d ${hrs}h`;
-  }
-  el.textContent = `${countdownStr} · ${localTimeStr}`;
+  el.textContent = `${String(mins).padStart(2, '0')}:${String(secs).padStart(2, '0')} · ${targetTime}`;
 }
 
 function renderSubPills() {
@@ -4780,13 +4802,6 @@ function renderSortPills(containerId, options, currentKey, onClick) {
 // ============================================================
 // INIT
 // ============================================================
-document.getElementById('scanNowBtn').addEventListener('click', async () => {
-  await performScan();
-  // Reset the auto-scan timer so the next one is 10 min from now
-  // (or stays "OPENS in X" if market closed). scheduleNextScan is defined below
-  // in init order, so it may not exist yet on first click — guard with typeof.
-  if (typeof scheduleNextScan === 'function') scheduleNextScan();
-});
 document.getElementById('clearHistoryBtn').addEventListener('click', () => {
   if (confirm('Clear all stored history, baselines, and persistence data?')) {
     STATE.history = [];
@@ -4850,15 +4865,39 @@ function rerenderSortPills() {
 }
 rerenderSortPills();
 
-performScan();
+// bootScanner() is called at the bottom of the scheduler section — it decides
+// whether to fire an immediate scan based on cache freshness, so we don't
+// scan unconditionally on every page load anymore.
 
 // ============================================================
-// MARKET-HOURS-AWARE AUTO-SCAN SCHEDULER
-// Inside the window: scan every 10 min.
-// Outside the window: don't auto-scan. Set a timer to wake up when
-//                     the window opens again.
-// Re-evaluates after every scan so DST/weekend transitions are handled.
+// CLOCK-ALIGNED AUTO-SCAN SCHEDULER
+// Scans fire on clock-aligned 10-minute boundaries (X:00, X:10, X:20, X:30,
+// X:40, X:50 past each hour) regardless of market hours. This means:
+//   - The countdown always shows time until the next "nice" minute
+//   - Two devices opening the app at the same time will scan at the same time
+//   - The user sees scans land on predictable, expected moments
+// Behavior:
+//   - On page load: if last scan was >10 min ago (or never), scan immediately.
+//     Otherwise wait until the next 10-min boundary.
+//   - After each scan: schedule the next one for the next 10-min boundary.
 // ============================================================
+
+// Returns the next Date that lands on a clock-aligned 10-min boundary from now.
+// E.g. if now is 14:23:45, returns 14:30:00.000.
+function nextClockBoundary(now = new Date()) {
+  const next = new Date(now.getTime());
+  next.setSeconds(0, 0);
+  // Round up to the next 10-min mark
+  const minute = next.getMinutes();
+  const nextTenth = Math.floor(minute / 10) * 10 + 10;
+  if (nextTenth >= 60) {
+    next.setHours(next.getHours() + 1, 0, 0, 0);
+  } else {
+    next.setMinutes(nextTenth);
+  }
+  return next;
+}
+
 function scheduleNextScan() {
   // Clear any existing timer
   if (STATE.refreshInterval) {
@@ -4866,27 +4905,32 @@ function scheduleNextScan() {
     STATE.refreshInterval = null;
   }
 
-  if (isAutoScanWindow()) {
-    // We're in the window — schedule next scan in 10 minutes
-    STATE.nextScanAt = Date.now() + SCAN_INTERVAL_MS;
-    STATE.refreshInterval = setTimeout(async () => {
-      await performScan();
-      scheduleNextScan(); // re-evaluate after each scan
-    }, SCAN_INTERVAL_MS);
+  const next = nextClockBoundary();
+  STATE.nextScanAt = next.getTime();
+  const msUntil = STATE.nextScanAt - Date.now();
+  STATE.refreshInterval = setTimeout(async () => {
+    await performScan();
+    scheduleNextScan(); // re-arm for the following boundary
+  }, msUntil);
+}
+
+// On page load: scan immediately IF cache is stale OR the ticker map is empty
+// (which happens on first visit or after CLEAR HIST). Otherwise just render
+// cached state from localStorage and wait for the next scheduled boundary.
+function bootScanner() {
+  const last = STATE.lastScanTime ? STATE.lastScanTime.getTime() : 0;
+  const ageMs = Date.now() - last;
+  const STALE_MS = 10 * 60 * 1000;
+  const tickersEmpty = STATE.tickers.size === 0;
+  if (!last || ageMs >= STALE_MS || tickersEmpty) {
+    performScan().then(() => scheduleNextScan());
   } else {
-    // Outside the window — schedule a wakeup for when it next opens
-    const msUntil = msUntilNextWindow();
-    STATE.nextScanAt = msUntil ? Date.now() + msUntil : null;
-    if (msUntil !== null) {
-      STATE.refreshInterval = setTimeout(async () => {
-        await performScan();
-        scheduleNextScan();
-      }, msUntil);
-    }
+    render();
+    scheduleNextScan();
   }
 }
 
-scheduleNextScan();
+bootScanner();
 STATE.countdownInterval = setInterval(updateCountdown, 1000);
 
 window.showTickerDetail = showTickerDetail;
