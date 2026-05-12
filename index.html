@@ -2227,6 +2227,37 @@ function getMentionHistory(symbol, lookback = 6) {
   return STATE.history.slice(-lookback).map(snap => snap.tickers[symbol]?.mentions || 0);
 }
 
+// Pull a per-scan history series for whatever metric matches the active sort.
+// Returns an array of numbers (one per recent scan). Used by the 60m trend
+// sparkline so the chart actually reflects what's being sorted on.
+//
+// Metric mappings:
+//   mentions  -> mention count per scan
+//   velocity  -> mention count per scan (velocity IS the derivative of this)
+//   zscore    -> mention count per scan (z-score measures deviation from this)
+//   bullish   -> net sentiment (bull - bear) per scan
+//   bearish   -> net sentiment (bull - bear) per scan
+function getMetricHistory(symbol, sortKey, lookback = 6) {
+  if (STATE.history.length < 2) return [];
+  const recent = STATE.history.slice(-lookback);
+
+  switch (sortKey) {
+    case 'bullish':
+    case 'bearish':
+      // Net sentiment per scan
+      return recent.map(snap => {
+        const s = snap.tickers[symbol];
+        if (!s) return 0;
+        return (s.bull || 0) - (s.bear || 0);
+      });
+    case 'mentions':
+    case 'velocity':
+    case 'zscore':
+    default:
+      return recent.map(snap => snap.tickers[symbol]?.mentions || 0);
+  }
+}
+
 function getVelocity(symbol) {
   const h = getMentionHistory(symbol, 6);
   if (h.length < 3) return 0;
@@ -2789,7 +2820,9 @@ function getSortedLong() {
 }
 
 function renderSparkline(symbol) {
-  const data = getMentionHistory(symbol, 6);
+  // Show trend for whatever sort is active. For 'mentions/velocity/zscore'
+  // that's mention counts; for 'bullish/bearish' that's net sentiment per scan.
+  const data = getMetricHistory(symbol, STATE.sortShort, 6);
   if (data.length < 2) {
     return `<svg class="sparkline" viewBox="0 0 100 28" preserveAspectRatio="none">
       <text x="50" y="18" text-anchor="middle" fill="#6b7a6b" font-size="9" font-family="JetBrains Mono">—</text>
@@ -2820,9 +2853,11 @@ function renderSparkline(symbol) {
     den += (i - xMean) ** 2;
   }
   const slope = den === 0 ? 0 : num / den;
-  // Threshold: slope must be at least ~0.1 mentions per scan to count as a trend
-  // (avoids classifying tiny float wobble from crosspost multipliers as a trend)
-  const TREND_THRESHOLD = 0.1;
+  // Threshold scales with data magnitude. For mentions (0-10 range) we used
+  // 0.1; for sentiment (which can be -50 to +50) we need ~1.0. Scale by the
+  // larger of (data range, abs mean) so the threshold stays meaningful.
+  const magnitude = Math.max(range, Math.abs(yMean), 1);
+  const TREND_THRESHOLD = magnitude * 0.05; // 5% of the metric's local scale
   let color;
   if (slope > TREND_THRESHOLD) color = 'var(--green)';
   else if (slope < -TREND_THRESHOLD) color = 'var(--red)';
@@ -3908,24 +3943,33 @@ const HELP_CONTENT = {
   },
   'trend': {
     title: '60-Minute Trend',
-    tag: 'Mention sparkline',
+    tag: 'Sort-aware sparkline',
     body: `
       <div class="help-section">
         <div class="help-section-label">What it shows</div>
         <div class="help-section-body">
-          Mini chart of the last 6 scans (~60 min) of mention counts for this ticker. <strong>Green line</strong> = trending up at the moment, <strong>red</strong> = trending down, gray = flat.
+          Mini chart of the last 6 scans (~60 min) for whichever metric matches the <strong>active sort</strong>. The chart updates when you change the sort pill above the ticker list.
         </div>
       </div>
       <div class="help-section">
-        <div class="help-section-label">Reading the shape</div>
+        <div class="help-section-label">Per-sort behavior</div>
         <div class="help-section-body">
-          Stair-stepping up = sustained momentum building. Single spike = one-off post. V-shaped = bounce. Flat = ticker discussed but conversation not growing.
+          <ul>
+            <li><strong>Mentions / Velocity / Z-Score</strong> — chart shows mention count per scan. Trends in this drive all three.</li>
+            <li><strong>Bullish / Bearish</strong> — chart shows net sentiment per scan (bull words − bear words). Useful for spotting sentiment reversals while sorting by bullish/bearish ranking.</li>
+          </ul>
+        </div>
+      </div>
+      <div class="help-section">
+        <div class="help-section-label">Color encoding</div>
+        <div class="help-section-body">
+          <strong>Green</strong> = metric trending up over the window. <strong>Red</strong> = trending down. <strong>Gray</strong> = flat or noise. Uses linear regression slope so single dips don't flip the color.
         </div>
       </div>
       <div class="help-section">
         <div class="help-section-label">More detail</div>
         <div class="help-section-body">
-          Click any ticker row to open the detail modal, which shows a larger Mention Velocity chart with per-scan dots (green/gray/red) and value labels marking each change in mention count.
+          Click any ticker row to open the detail modal, which shows a larger Mention Velocity chart with per-scan dots and value labels marking each change.
         </div>
       </div>
     `,
