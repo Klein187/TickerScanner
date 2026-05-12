@@ -717,7 +717,8 @@
     gap: 10px;
     margin-bottom: 20px;
   }
-  .modal-stat { background: var(--bg); padding: 10px 12px; border: 1px solid var(--border); }
+  .modal-stat { background: var(--bg); padding: 10px 12px; border: 1px solid var(--border); position: relative; cursor: help; transition: border-color 0.15s ease; }
+  .modal-stat:hover { border-color: var(--green); }
   .modal-stat .label {
     font-size: 9px;
     color: var(--text-dim);
@@ -726,6 +727,98 @@
     margin-bottom: 4px;
   }
   .modal-stat .value { font-size: 16px; color: var(--text-bright); font-weight: 500; }
+
+  /* ============ Stat tooltips (hover/tap to reveal explanation) ============ */
+  .stat-tooltip {
+    position: absolute;
+    bottom: calc(100% + 6px);
+    left: 50%;
+    transform: translateX(-50%);
+    width: 220px;
+    max-width: 90vw;
+    background: var(--bg-panel);
+    border: 1px solid var(--green);
+    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.6), 0 0 0 1px var(--green-glow);
+    padding: 10px 12px;
+    font-size: 11px;
+    line-height: 1.45;
+    color: var(--text);
+    letter-spacing: 0.02em;
+    text-transform: none;
+    z-index: 110;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.15s ease, transform 0.15s ease;
+    transform: translateX(-50%) translateY(4px);
+    text-align: left;
+    font-weight: 400;
+  }
+  .stat-tooltip::after {
+    content: '';
+    position: absolute;
+    top: 100%;
+    left: 50%;
+    transform: translateX(-50%);
+    border: 5px solid transparent;
+    border-top-color: var(--green);
+  }
+  .stat-tooltip-title {
+    font-size: 10px;
+    color: var(--green);
+    letter-spacing: 0.2em;
+    text-transform: uppercase;
+    font-weight: 700;
+    margin-bottom: 4px;
+  }
+  .stat-tooltip-body strong { color: var(--text-bright); font-weight: 700; }
+  .stat-tooltip-body code {
+    background: var(--bg);
+    color: var(--amber);
+    padding: 0 3px;
+    font-size: 10px;
+    border: 1px solid var(--border);
+  }
+  .modal-stat:hover .stat-tooltip,
+  .modal-stat.tip-open .stat-tooltip {
+    opacity: 1;
+    pointer-events: auto;
+    transform: translateX(-50%) translateY(0);
+  }
+  /* Edge handling: first column tooltips align left, last column align right */
+  .modal-stat:first-child .stat-tooltip,
+  .modal-stat:nth-child(3n+1) .stat-tooltip {
+    left: 0;
+    transform: translateX(0) translateY(4px);
+  }
+  .modal-stat:first-child:hover .stat-tooltip,
+  .modal-stat:first-child.tip-open .stat-tooltip,
+  .modal-stat:nth-child(3n+1):hover .stat-tooltip,
+  .modal-stat:nth-child(3n+1).tip-open .stat-tooltip {
+    transform: translateX(0) translateY(0);
+  }
+  .modal-stat:first-child .stat-tooltip::after,
+  .modal-stat:nth-child(3n+1) .stat-tooltip::after {
+    left: 20px;
+    transform: none;
+  }
+  .modal-stat:nth-child(3n) .stat-tooltip,
+  .modal-stat:last-child .stat-tooltip {
+    left: auto;
+    right: 0;
+    transform: translateX(0) translateY(4px);
+  }
+  .modal-stat:nth-child(3n):hover .stat-tooltip,
+  .modal-stat:nth-child(3n).tip-open .stat-tooltip,
+  .modal-stat:last-child:hover .stat-tooltip,
+  .modal-stat:last-child.tip-open .stat-tooltip {
+    transform: translateX(0) translateY(0);
+  }
+  .modal-stat:nth-child(3n) .stat-tooltip::after,
+  .modal-stat:last-child .stat-tooltip::after {
+    left: auto;
+    right: 20px;
+    transform: none;
+  }
   .chart-container {
     margin: 16px 0;
     padding: 16px;
@@ -1142,6 +1235,31 @@
     .modal-stat .value { font-size: 13px; }
     .chart-container { padding: 10px; margin: 10px 0; }
     .chart-svg { height: 140px; }
+
+    /* On mobile, tooltips stretch across the modal width below the card
+       (rather than above), so they don't get clipped or jam against the top */
+    .stat-tooltip {
+      width: calc(100vw - 32px);
+      max-width: none;
+      bottom: auto;
+      top: calc(100% + 6px);
+      left: 50% !important;
+      right: auto !important;
+      transform: translateX(-50%) translateY(-4px) !important;
+    }
+    .modal-stat:hover .stat-tooltip,
+    .modal-stat.tip-open .stat-tooltip {
+      transform: translateX(-50%) translateY(0) !important;
+    }
+    .stat-tooltip::after {
+      top: auto !important;
+      bottom: 100%;
+      left: 50% !important;
+      right: auto !important;
+      transform: translateX(-50%) !important;
+      border-top-color: transparent;
+      border-bottom-color: var(--green);
+    }
 
     /* Help modal: also fullscreen */
     .help-modal-overlay { padding: 0; }
@@ -2432,43 +2550,75 @@ function showTickerDetail(symbol) {
     </div>
 
     <div class="modal-stats">
-      <div class="modal-stat">
+      <div class="modal-stat" data-tip="price">
         <div class="label">Price</div>
         <div class="value">${price && price.price ? '$' + price.price.toFixed(2) : '—'}</div>
+        <div class="stat-tooltip">
+          <div class="stat-tooltip-title">Latest Price</div>
+          <div class="stat-tooltip-body">Most recent close from <strong>Stooq</strong>. End-of-day data, not real-time. <code>—</code> means the fetch failed or the ticker isn't in Stooq's US database.</div>
+        </div>
       </div>
-      <div class="modal-stat">
+      <div class="modal-stat" data-tip="change">
         <div class="label">Change</div>
         <div class="value" style="color: ${price && price.changePct > 0 ? 'var(--green)' : price && price.changePct < 0 ? 'var(--red)' : 'var(--text-dim)'}">
           ${price && price.price ? (price.changePct > 0 ? '+' : '') + price.changePct.toFixed(2) + '%' : '—'}
         </div>
+        <div class="stat-tooltip">
+          <div class="stat-tooltip-title">Day's % Change</div>
+          <div class="stat-tooltip-body">Open-to-close percentage move for the latest trading session. Pair with <strong>Sentiment</strong> — opposite signs flag possible divergence setups.</div>
+        </div>
       </div>
-      <div class="modal-stat">
+      <div class="modal-stat" data-tip="zscore">
         <div class="label">Z-Score</div>
         <div class="value" style="color: ${z !== null && z > 1.5 ? 'var(--red)' : 'var(--text-bright)'}">
           ${z !== null ? (z > 0 ? '+' : '') + z.toFixed(1) + 'σ' : '—'}
         </div>
+        <div class="stat-tooltip">
+          <div class="stat-tooltip-title">Z-Score</div>
+          <div class="stat-tooltip-body">Standard deviations above this ticker's own running average. <code>+2σ</code> = ~2x normal chatter. <strong>Best early signal</strong> — catches sleepers that raw mention counts miss. Needs 6+ scans.</div>
+        </div>
       </div>
-      <div class="modal-stat">
+      <div class="modal-stat" data-tip="quality">
         <div class="label">Quality</div>
         <div class="value" style="color: var(--purple);">${Math.round(quality)}/100</div>
+        <div class="stat-tooltip">
+          <div class="stat-tooltip-title">Quality Score</div>
+          <div class="stat-tooltip-body">Composite of DD-post scores plus sub-weighting. <strong>High</strong> = serious investors are writing substantive posts about this ticker, not just memes. 0–100 scale.</div>
+        </div>
       </div>
-      <div class="modal-stat">
+      <div class="modal-stat" data-tip="persistence">
         <div class="label">Persistence</div>
         <div class="value" style="color: var(--blue);">${persist.scans} scans</div>
+        <div class="stat-tooltip">
+          <div class="stat-tooltip-title">Persistence</div>
+          <div class="stat-tooltip-body">Distinct scans where this ticker had any mentions. <strong>High = sustained conviction</strong>; low + lots of mentions = one-day pump. Builds value over days of history.</div>
+        </div>
       </div>
-      <div class="modal-stat">
+      <div class="modal-stat" data-tip="consensus">
         <div class="label">Consensus</div>
         <div class="value">${consensus} sub${consensus !== 1 ? 's' : ''}</div>
+        <div class="stat-tooltip">
+          <div class="stat-tooltip-title">Cross-Sub Consensus</div>
+          <div class="stat-tooltip-body">Number of distinct subreddits discussing this ticker. <strong>3+ across mixed tiers</strong> (meme + quality) is a strong breadth signal. See "Subreddit Distribution" below for the breakdown.</div>
+        </div>
       </div>
-      <div class="modal-stat">
+      <div class="modal-stat" data-tip="sentiment">
         <div class="label">Sentiment</div>
         <div class="value" style="color: ${sent > 15 ? 'var(--green)' : sent < -15 ? 'var(--red)' : 'var(--text-dim)'}">
           ${sent > 0 ? '+' : ''}${Math.round(sent)}
         </div>
+        <div class="stat-tooltip">
+          <div class="stat-tooltip-title">Net Sentiment</div>
+          <div class="stat-tooltip-body">Bullish vs bearish language balance, <code>-100</code> to <code>+100</code>. From ~150 financial Reddit terms weighted by intensity ("moon" +3, "bagholder" +3, etc.).</div>
+        </div>
       </div>
-      <div class="modal-stat">
+      <div class="modal-stat" data-tip="karma">
         <div class="label">Karma</div>
         <div class="value">${t.score.toLocaleString()}</div>
+        <div class="stat-tooltip">
+          <div class="stat-tooltip-title">Total Karma</div>
+          <div class="stat-tooltip-body">Sum of upvotes across all posts mentioning this ticker this scan. High karma + few posts = a viral single thread; high karma + many posts = sustained community attention.</div>
+        </div>
       </div>
     </div>
 
@@ -2517,6 +2667,26 @@ function showTickerDetail(symbol) {
     </div>
   `;
   document.getElementById('modalOverlay').classList.add('active');
+
+  // Wire touch handlers: on mobile, tap toggles the tooltip (hover doesn't work).
+  // First tap opens; tapping outside or on another stat closes/transfers.
+  requestAnimationFrame(() => {
+    const stats = document.querySelectorAll('#modalContent .modal-stat');
+    stats.forEach(stat => {
+      stat.addEventListener('click', (e) => {
+        // Toggle this one, close others
+        const wasOpen = stat.classList.contains('tip-open');
+        stats.forEach(s => s.classList.remove('tip-open'));
+        if (!wasOpen) stat.classList.add('tip-open');
+        e.stopPropagation();
+      });
+    });
+    // Tapping anywhere else inside the modal closes any open tooltip
+    const modal = document.getElementById('modalContent');
+    modal.addEventListener('click', () => {
+      stats.forEach(s => s.classList.remove('tip-open'));
+    });
+  });
 }
 
 function renderBigChart(data, color) {
