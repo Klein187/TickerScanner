@@ -618,6 +618,44 @@
   .post-sentiment.bull { background: rgba(74, 222, 128, 0.15); color: var(--green); }
   .post-sentiment.bear { background: rgba(239, 68, 68, 0.15); color: var(--red); }
   .post-sentiment.neutral { background: rgba(107, 122, 107, 0.15); color: var(--text-dim); }
+
+  /* Subreddit chips for consolidated posts (multiple subs the same post appeared in) */
+  .post-subs {
+    display: inline-flex;
+    flex-wrap: wrap;
+    gap: 4px;
+    align-items: center;
+    min-width: 0;
+  }
+  .post-sub-tag {
+    font-size: 9px;
+    padding: 2px 6px;
+    background: var(--bg);
+    color: var(--text-dim);
+    border: 1px solid var(--border);
+    letter-spacing: 0.1em;
+    text-transform: lowercase;
+    text-decoration: none;
+    transition: all 0.15s ease;
+    white-space: nowrap;
+  }
+  .post-sub-tag:hover {
+    color: var(--green);
+    border-color: var(--green);
+  }
+  .crosspost-badge {
+    display: inline-block;
+    font-size: 9px;
+    padding: 1px 5px;
+    background: rgba(167, 139, 250, 0.15);
+    color: var(--purple);
+    border: 1px solid rgba(167, 139, 250, 0.3);
+    letter-spacing: 0.1em;
+    margin-left: 6px;
+    font-weight: 700;
+    vertical-align: middle;
+  }
+
   .post-tickers { display: flex; gap: 4px; flex-wrap: wrap; margin-top: 6px; }
 
   .loading, .empty, .error {
@@ -1756,6 +1794,7 @@ async function fetchSubreddit(sub) {
         id: c.data.id,
         title: c.data.title,
         selftext: c.data.selftext || '',
+        author: c.data.author || '[deleted]',
         score: c.data.score,
         upvote_ratio: c.data.upvote_ratio || 0,
         num_comments: c.data.num_comments,
@@ -2401,22 +2440,71 @@ function renderTickersLong() {
 
 function renderPosts() {
   const list = document.getElementById('postList');
-  const posts = STATE.posts.filter(p => p.tickers && p.tickers.length > 0).slice(0, 20);
+  const all = STATE.posts.filter(p => p.tickers && p.tickers.length > 0);
+
+  // Consolidate: same title + same author = same post (crosspost).
+  // Keep one representative entry but track all subs it appears in.
+  // Normalize title (lowercase, collapse whitespace) to catch trivial variations.
+  function normalize(s) {
+    return (s || '').toLowerCase().replace(/\s+/g, ' ').trim();
+  }
+  const groupMap = new Map();
+  for (const p of all) {
+    const key = `${normalize(p.title)}__${p.author}`;
+    if (!groupMap.has(key)) {
+      groupMap.set(key, {
+        ...p,
+        subs: new Set([p.subreddit]),
+        // The "representative" stays the one with highest score
+        permalinks: { [p.subreddit]: p.permalink },
+        totalScore: p.score,
+        totalComments: p.num_comments,
+      });
+    } else {
+      const g = groupMap.get(key);
+      g.subs.add(p.subreddit);
+      g.permalinks[p.subreddit] = p.permalink;
+      // Use the highest-scoring instance's permalink as the default click target
+      if (p.score > g.score) {
+        g.score = p.score;
+        g.permalink = p.permalink;
+      }
+      // Aggregate engagement totals across crossposts
+      g.totalScore = Math.max(g.totalScore, p.score);
+      g.totalComments = Math.max(g.totalComments, p.num_comments);
+    }
+  }
+
+  // Sort groups by representative score, descending, then take top 20
+  const posts = [...groupMap.values()]
+    .sort((a, b) => b.score - a.score)
+    .slice(0, 20);
+
   if (posts.length === 0) {
     list.innerHTML = '<div class="empty">// NO POSTS WITH TICKERS //</div>';
     document.getElementById('postCount').textContent = '0';
     return;
   }
+
   list.innerHTML = posts.map(p => {
     const net = p.sentiment?.net || 0;
     const sentClass = net > 2 ? 'bull' : net < -2 ? 'bear' : 'neutral';
     const sentLabel = net > 2 ? 'BULL' : net < -2 ? 'BEAR' : 'NEUT';
+    const subList = [...p.subs];
+    // Build the sub tags: each sub clickable to its specific permalink
+    const subTags = subList.map(s => {
+      const url = p.permalinks[s] || p.permalink;
+      return `<a href="${url}" target="_blank" class="post-sub-tag" onclick="event.stopPropagation()">r/${s}</a>`;
+    }).join('');
+    const crosspostBadge = subList.length > 1
+      ? `<span class="crosspost-badge">×${subList.length}</span>`
+      : '';
     return `
       <div class="post-item" onclick="window.open('${p.permalink}', '_blank')">
-        <div class="post-title">${escapeHtml(p.title)}</div>
+        <div class="post-title">${escapeHtml(p.title)}${crosspostBadge}</div>
         <div class="post-meta">
-          <span>r/${p.subreddit}<span class="post-sentiment ${sentClass}">${sentLabel}</span></span>
-          <span>${p.score} ↑ · ${p.num_comments} 💬</span>
+          <span class="post-subs">${subTags}<span class="post-sentiment ${sentClass}">${sentLabel}</span></span>
+          <span>${p.totalScore} ↑ · ${p.totalComments} 💬</span>
         </div>
         <div class="post-tickers">
           ${p.tickers.slice(0, 6).map(t => `<span class="ticker-tag">$${t}</span>`).join('')}
@@ -2745,9 +2833,20 @@ function hideStatTooltip(immediate = false) {
 // (Previously this was inside wireStatTooltips, which got re-run every
 // time the modal opened, stacking up multiple handlers.)
 function installTooltipDocumentHandler() {
+  // Track ongoing touches at the document level too, so we can ignore the
+  // synthetic click that fires ~300ms after a tap.
+  let docTouchInFlight = false;
+  let docTouchTimer = null;
+  document.addEventListener('touchstart', () => {
+    docTouchInFlight = true;
+    if (docTouchTimer) clearTimeout(docTouchTimer);
+    docTouchTimer = setTimeout(() => { docTouchInFlight = false; }, 600);
+  }, { passive: true, capture: true });
+
   document.addEventListener('click', (e) => {
     if (!activeTipTrigger) return;
     if (tipJustOpened) return; // ignore the same tap that opened us
+    if (docTouchInFlight) return; // ignore synthetic clicks from touches
     // Click on the current trigger or on its content — keep open
     if (activeTipTrigger.contains(e.target)) return;
     // Click inside the tooltip itself — keep open
@@ -2760,10 +2859,21 @@ function installTooltipDocumentHandler() {
     hideStatTooltip(true);
   });
 
+  // For touch, use touchend on document so outside-tap dismissal still works
+  document.addEventListener('touchend', (e) => {
+    if (!activeTipTrigger) return;
+    if (tipJustOpened) return;
+    if (activeTipTrigger.contains(e.target)) return;
+    const tip = document.getElementById('floatingTooltip');
+    if (tip && tip.contains(e.target)) return;
+    const otherStat = e.target.closest && e.target.closest('.modal-stat');
+    if (otherStat && otherStat !== activeTipTrigger) return;
+    hideStatTooltip(true);
+  });
+
   window.addEventListener('resize', () => {
     if (activeTipTrigger) positionTooltip(activeTipTrigger);
   });
-  // Reposition on any scroll (modal or window)
   window.addEventListener('scroll', () => {
     if (activeTipTrigger) positionTooltip(activeTipTrigger);
   }, { passive: true, capture: true });
@@ -2771,13 +2881,57 @@ function installTooltipDocumentHandler() {
 
 function wireStatTooltips() {
   const stats = document.querySelectorAll('#modalContent .modal-stat');
+
+  // Track whether the user is actively in a touch interaction.
+  // iOS Safari synthesizes mouseenter/mouseleave/click from touches, which was
+  // causing this sequence on a single tap:
+  //   mouseenter -> show
+  //   mouseleave -> hide
+  //   click -> toggle (now sees as open) -> hide
+  // Result: tooltip vanished on first tap.
+  // Fix: when a touch happens, set a flag that disables hover handlers until
+  // the touch sequence ends.
+  let touchInFlight = false;
+  let touchReleaseTimer = null;
+
+  function noteTouchActivity() {
+    touchInFlight = true;
+    if (touchReleaseTimer) clearTimeout(touchReleaseTimer);
+    // Release after the synthetic mouse events would have fired (~500ms is safe)
+    touchReleaseTimer = setTimeout(() => { touchInFlight = false; }, 600);
+  }
+
   stats.forEach(stat => {
-    // Desktop: hover
-    stat.addEventListener('mouseenter', () => showStatTooltip(stat));
-    stat.addEventListener('mouseleave', () => hideStatTooltip(false));
-    // Mobile + desktop click: toggle
+    // Touch path — bind touchend directly so we don't depend on synthetic clicks
+    stat.addEventListener('touchstart', noteTouchActivity, { passive: true });
+    stat.addEventListener('touchend', (e) => {
+      noteTouchActivity();
+      // Toggle on tap
+      if (activeTipTrigger === stat) {
+        hideStatTooltip(true);
+      } else {
+        showStatTooltip(stat);
+      }
+      // Prevent the synthetic mouse/click from also firing handlers below
+      e.preventDefault();
+    });
+
+    // Desktop hover — gated by touchInFlight so iOS synthetic mouse events
+    // can't trigger us
+    stat.addEventListener('mouseenter', () => {
+      if (touchInFlight) return;
+      showStatTooltip(stat);
+    });
+    stat.addEventListener('mouseleave', () => {
+      if (touchInFlight) return;
+      hideStatTooltip(false);
+    });
+
+    // Desktop click (mouse) — also gated, since iOS will fire a click event
+    // even if we preventDefault'd touchend on some versions
     stat.addEventListener('click', (e) => {
       e.stopPropagation();
+      if (touchInFlight) return;
       if (activeTipTrigger === stat) {
         hideStatTooltip(true);
       } else {
