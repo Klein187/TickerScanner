@@ -4711,10 +4711,17 @@ function scheduleNextScan() {
 // the source of truth; localStorage is just a fast-render cache so the UI
 // isn't empty while the fetch is in flight.
 function bootScanner() {
-  // Always re-fetch on load (the Worker may have produced a newer scan since
-  // we last loaded), but render any cached state immediately to avoid a blank
-  // screen during the fetch.
-  if (STATE.tickers.size > 0) render();
+  // If we have cached tickers from localStorage, render them immediately so
+  // the UI isn't empty during the API fetch. Also set status from market state.
+  if (STATE.tickers.size > 0) {
+    render();
+    if (isAutoScanWindow()) {
+      setStatus('live', 'LIVE · MARKET OPEN');
+    } else {
+      setStatus('idle', 'LIVE · MARKET CLOSED');
+    }
+  }
+  // Always re-fetch from the API to get the latest scan (may be newer than cache)
   performScan().then(() => scheduleNextScan());
 }
 
