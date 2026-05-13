@@ -108,6 +108,11 @@
   .pulse.idle { background: var(--amber); box-shadow: 0 0 12px var(--amber); }
   .countdown { font-size: 11px; color: var(--text-dim); letter-spacing: 0.15em; }
   .countdown span { color: var(--green); font-weight: 700; }
+  /* Opens-countdown shows when market is closed. Amber-themed to distinguish
+     from the green NEXT-scan countdown and visually link it to the amber
+     pulse that indicates the closed market state. */
+  .countdown.opens-countdown span { color: var(--amber); }
+  .countdown.opens-countdown .countdown-label { color: var(--text-dim); font-weight: 400; }
 
   /* Mega tabs */
   .mega-tabs {
@@ -1616,6 +1621,7 @@
       </div>
       <div class="status-item">LAST <strong id="lastScan">—</strong></div>
       <div class="countdown" onclick="showHelp('market-hours')" style="cursor: pointer;" title="Click for auto-scan schedule info"><span id="countdownLabel">NEXT</span> <span id="countdown">10:00</span></div>
+      <div class="countdown opens-countdown" id="opensCountdown" onclick="showHelp('market-hours')" style="cursor: pointer; display: none;" title="Time until US market opens"><span class="countdown-label">OPENS</span> <span id="opensTime">—</span></div>
     </div>
   </header>
 
@@ -4499,8 +4505,9 @@ function nextMarketOpen(now = new Date()) {
 }
 
 function updateCountdown() {
-  // Always shows time until the next clock-aligned auto-scan. No market-state
-  // branching anymore — scans run 24/7 on the same 10-min cadence.
+  // Two independent countdowns:
+  // 1. NEXT scan — always shows time until next 10-min boundary auto-fetch
+  // 2. OPENS — only visible when US market is closed; shows time to 9:30am ET
   const el = document.getElementById('countdown');
   const labelEl = document.getElementById('countdownLabel');
   const now = Date.now();
@@ -4509,22 +4516,64 @@ function updateCountdown() {
     labelEl.textContent = 'NEXT';
   }
 
-  if (!STATE.nextScanAt) {
+  // --- Next scan countdown ---
+  if (STATE.nextScanAt) {
+    const remaining = Math.max(0, STATE.nextScanAt - now);
+    const mins = Math.floor(remaining / 60000);
+    const secs = Math.floor((remaining % 60000) / 1000);
+    const targetTime = new Date(STATE.nextScanAt).toLocaleTimeString([], {
+      hour: 'numeric',
+      minute: '2-digit',
+      hour12: true,
+    });
+    el.textContent = `${String(mins).padStart(2, '0')}:${String(secs).padStart(2, '0')} · ${targetTime}`;
+  } else {
     el.textContent = '—';
+  }
+
+  // --- Market-open countdown (only visible when market is closed) ---
+  const opensEl = document.getElementById('opensCountdown');
+  const opensTimeEl = document.getElementById('opensTime');
+  if (!opensEl || !opensTimeEl) return;
+
+  const marketOpen = isAutoScanWindow();
+  if (marketOpen) {
+    // Market is open right now — hide the OPENS countdown entirely
+    opensEl.style.display = 'none';
     return;
   }
-  const remaining = Math.max(0, STATE.nextScanAt - now);
-  const mins = Math.floor(remaining / 60000);
-  const secs = Math.floor((remaining % 60000) / 1000);
 
-  // Display target time alongside the countdown so the user can verify
-  // "next scan at 1:30 AM" matches expectation
-  const targetTime = new Date(STATE.nextScanAt).toLocaleTimeString([], {
+  // Market is closed — compute time to next 9:30am ET open
+  const openMoment = nextMarketOpen(new Date(now));
+  if (!openMoment) {
+    opensEl.style.display = 'none';
+    return;
+  }
+
+  opensEl.style.display = '';
+  const opensRemaining = openMoment.getTime() - now;
+  const totalMins = Math.floor(opensRemaining / 60000);
+  const localOpenStr = openMoment.toLocaleTimeString([], {
     hour: 'numeric',
     minute: '2-digit',
     hour12: true,
   });
-  el.textContent = `${String(mins).padStart(2, '0')}:${String(secs).padStart(2, '0')} · ${targetTime}`;
+
+  let countdownStr;
+  if (totalMins < 60) {
+    const m = totalMins;
+    const s = Math.floor((opensRemaining % 60000) / 1000);
+    countdownStr = `${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
+  } else if (totalMins < 60 * 24) {
+    const hrs = Math.floor(totalMins / 60);
+    const m = totalMins % 60;
+    countdownStr = `${hrs}h ${String(m).padStart(2, '0')}m`;
+  } else {
+    const days = Math.floor(totalMins / (60 * 24));
+    const hrs = Math.floor((totalMins % (60 * 24)) / 60);
+    countdownStr = `${days}d ${hrs}h`;
+  }
+  opensTimeEl.textContent = `${countdownStr} · ${localOpenStr}`;
 }
 
 function renderSubPills() {
