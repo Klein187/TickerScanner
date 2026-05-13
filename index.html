@@ -5,6 +5,15 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, user-scalable=no">
 <title>TICKER//SCAN</title>
 
+<!-- Disable browser caching of the HTML itself. The JS code, CSS, and data
+     are all inlined in this single file, so any change to the app means a
+     new HTML. Caching it for 10 minutes (GitHub Pages' default) makes
+     iteration painful and can serve users a stale version. The data API
+     fetches still use their own cache logic. -->
+<meta http-equiv="Cache-Control" content="no-store, no-cache, must-revalidate, max-age=0">
+<meta http-equiv="Pragma" content="no-cache">
+<meta http-equiv="Expires" content="0">
+
 <!-- PWA / iOS Home Screen App -->
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="mobile-web-app-capable" content="yes">
@@ -2016,7 +2025,7 @@ const WORKER_URL = 'https://tickerscanner-api.klein187.workers.dev';
 // `clientVersionMin` in its snapshot response; if THIS value is less than
 // that minimum, the client knows it's stale, clears localStorage, and
 // hard-reloads to grab the latest HTML.
-const CLIENT_VERSION = 1;
+const CLIENT_VERSION = 2;
 
 const HISTORY_KEY = 'tickerscan_history_v3';
 // v4 of baseline key: forced reset because crosspost-deduplicated mention
