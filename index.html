@@ -2025,7 +2025,7 @@ const WORKER_URL = 'https://tickerscanner-api.klein187.workers.dev';
 // `clientVersionMin` in its snapshot response; if THIS value is less than
 // that minimum, the client knows it's stale, clears localStorage, and
 // hard-reloads to grab the latest HTML.
-const CLIENT_VERSION = 2;
+const CLIENT_VERSION = 3;
 
 const HISTORY_KEY = 'tickerscan_history_v3';
 // v4 of baseline key: forced reset because crosspost-deduplicated mention
@@ -3030,7 +3030,10 @@ function renderDDPosts() {
     return;
   }
   list.innerHTML = posts.map(p => {
-    const len = (p.selftext.length / 1000).toFixed(1);
+    // selftextLength comes from the API (worker reports raw post length).
+    // Fall back to selftext.length if API didn't include it (legacy snapshot).
+    const charCount = p.selftextLength ?? (p.selftext?.length || 0);
+    const len = (charCount / 1000).toFixed(1);
     return `
       <div class="dd-post" onclick="window.open('${p.permalink}', '_blank')">
         <div class="dd-post-title">${escapeHtml(p.title)}</div>
@@ -3218,7 +3221,7 @@ function showTickerDetail(symbol) {
           <div style="padding: 10px 0; border-bottom: 1px solid var(--border); cursor: pointer;" onclick="window.open('${p.permalink}', '_blank')">
             <div style="color: var(--text-bright); font-size: 12px; margin-bottom: 6px;">${escapeHtml(p.title)}</div>
             <div style="font-size: 10px; color: var(--purple); letter-spacing: 0.1em;">
-              DD ${p.ddScore} · r/${p.subreddit} · ${(p.selftext.length / 1000).toFixed(1)}k chars
+              DD ${p.ddScore} · r/${p.subreddit} · ${((p.selftextLength ?? p.selftext?.length ?? 0) / 1000).toFixed(1)}k chars
             </div>
           </div>
         `).join('')}
