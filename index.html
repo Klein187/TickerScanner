@@ -2005,6 +2005,13 @@ const SCAN_INTERVAL_MS = 10 * 60 * 1000;
 // ============================================================
 const WORKER_URL = 'https://tickerscanner-api.klein187.workers.dev';
 
+// CLIENT_VERSION — bumped when the HTML/JS in this file changes in a way
+// that's incompatible with old cached state. The worker returns a
+// `clientVersionMin` in its snapshot response; if THIS value is less than
+// that minimum, the client knows it's stale, clears localStorage, and
+// hard-reloads to grab the latest HTML.
+const CLIENT_VERSION = 1;
+
 const HISTORY_KEY = 'tickerscan_history_v3';
 // v4 of baseline key: forced reset because crosspost-deduplicated mention
 // counts (introduced in v16) are on a different scale than the old per-post
@@ -2481,6 +2488,26 @@ async function performScan() {
     if (!snapRes.ok) throw new Error(`Snapshot fetch failed: ${snapRes.status}`);
     snapshot = await snapRes.json();
     if (snapshot.error) throw new Error(snapshot.error);
+
+    // Version compatibility check: if the worker is now requiring a newer
+    // client than this page is, the user must have an old cached HTML.
+    // Self-recover by wiping localStorage and forcing a hard reload — this
+    // breaks the stale-cache cycle without manual intervention.
+    if (typeof snapshot.clientVersionMin === 'number' &&
+        snapshot.clientVersionMin > CLIENT_VERSION) {
+      console.warn(`Client v${CLIENT_VERSION} is older than required v${snapshot.clientVersionMin}. Clearing cache and reloading.`);
+      try {
+        // Wipe all our localStorage so the new client starts fresh
+        for (const k of Object.keys(localStorage)) {
+          if (k.startsWith('tickerscan_')) localStorage.removeItem(k);
+        }
+      } catch (e) {}
+      // Force a hard reload bypassing browser cache. The query-string buster
+      // makes sure even an aggressive CDN cache serves fresh HTML.
+      location.replace(location.pathname + '?v=' + Date.now() + location.hash);
+      return;
+    }
+
     history = histRes.ok ? await histRes.json() : [];
     baselines = baseRes.ok ? await baseRes.json() : {};
   } catch (err) {
